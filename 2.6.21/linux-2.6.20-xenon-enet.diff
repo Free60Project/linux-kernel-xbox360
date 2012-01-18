@@ -1,0 +1,773 @@
+This adds support for the Ethernet controller used in the Xenon southbridge.
+
+It is based on the skeleton code, and works surprisingly good. It has some 
+rough edges, especially regarding SMP locks, and probably needs some code
+cleanup.
+
+Signed-off-by: Felix Domke <tmbinc@elitevb.net>
+
+---
+ drivers/net/Kconfig     |    4 
+ drivers/net/Makefile    |    2 
+ drivers/net/xenon_net.c |  725 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 731 insertions(+)
+
+Index: linux-2.6.20/drivers/net/Kconfig
+===================================================================
+--- linux-2.6.20.orig/drivers/net/Kconfig	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/drivers/net/Kconfig	2007-03-07 19:01:22.000000000 +0100
+@@ -1622,6 +1622,10 @@
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called 8139cp.  This is recommended.
+ 
++config XENON_ENET
++	tristate "Xenon Fast Ethernet Adapter support"
++	depends on NET_PCI && PCI
++
+ config 8139TOO
+ 	tristate "RealTek RTL-8129/8130/8139 PCI Fast Ethernet Adapter support"
+ 	depends on NET_PCI && PCI
+Index: linux-2.6.20/drivers/net/Makefile
+===================================================================
+--- linux-2.6.20.orig/drivers/net/Makefile	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/drivers/net/Makefile	2007-03-07 19:01:22.000000000 +0100
+@@ -217,3 +217,5 @@
+ obj-$(CONFIG_FS_ENET) += fs_enet/
+ 
+ obj-$(CONFIG_NETXEN_NIC) += netxen/
++
++obj-$(CONFIG_XENON_ENET) += xenon_net.o
+Index: linux-2.6.20/drivers/net/xenon_net.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/drivers/net/xenon_net.c	2007-03-07 19:01:22.000000000 +0100
+@@ -0,0 +1,725 @@
++/*
++ * based on skeleton code.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/pci.h>
++#include <linux/init.h>
++#include <linux/ioport.h>
++#include <linux/netdevice.h>
++#include <linux/etherdevice.h>
++#include <linux/delay.h>
++#include <linux/ethtool.h>
++#include <linux/mii.h>
++#include <linux/crc32.h>
++#include <asm/io.h>
++
++#define assert(expr) \
++        if(!(expr)) {					\
++        printk( "Assertion failed! %s,%s,%s,line=%d\n",	\
++        #expr,__FILE__,__FUNCTION__,__LINE__);		\
++        }
++
++#define XENONNET_VERSION		"1.0.0"
++#define MODNAME			"xenon_net"
++#define XENONNET_DRIVER_LOAD_MSG	"Xenon Fast Ethernet driver " XENONNET_VERSION " loaded"
++#define PFX			MODNAME ": "
++
++#define RX_RING_SIZE 16
++#define TX_RING_SIZE 16
++
++#define TX_TIMEOUT    (6*HZ)
++
++static char version[] __devinitdata =
++KERN_INFO XENONNET_DRIVER_LOAD_MSG "\n"
++KERN_INFO "\n";
++
++static struct pci_device_id xenon_net_pci_tbl[] = {
++	{0x1414, 0x580a, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
++	{0,}
++};
++
++MODULE_DEVICE_TABLE (pci, xenon_net_pci_tbl);
++
++/* Symbolic offsets to registers. */
++enum XENONNET_registers {
++	TxConfig = 0x00,
++	TxDescriptorBase = 0x04,
++	TxDescriptorStatus = 0x0C,
++	RxConfig = 0x10,
++	RxDescriptorBase = 0x14,
++	InterruptStatus = 0x20,
++	InterruptMask = 0x24,
++	Config0 = 0x28,
++	Power = 0x30,
++	PhyConfig = 0x40,
++	PhyControl = 0x44,
++	Config1 = 0x50,
++	RetryCount = 0x54,
++	MulticastFilterControl = 0x60,
++	Address0 = 0x62,
++	MulticastHash = 0x68,
++	MaxPacketSize = 0x78,
++	Address1 = 0x7A
++};
++
++struct xenon_net_private {
++	void *mmio_addr;
++	struct pci_dev *pdev;
++	struct net_device_stats stats;
++
++	/* we maintain a list of rx and tx descriptors */
++	void *tx_descriptor_base;
++	void *rx_descriptor_base;
++	dma_addr_t tx_descriptor_base_dma;
++	dma_addr_t rx_descriptor_base_dma;
++
++	struct sk_buff *rx_skbuff[RX_RING_SIZE];
++	dma_addr_t rx_skbuff_dma[RX_RING_SIZE];
++
++	struct sk_buff *tx_skbuff[TX_RING_SIZE];
++	dma_addr_t tx_skbuff_dma[TX_RING_SIZE];
++
++	atomic_t tx_next_free, tx_next_done, rx_next;
++
++	int rx_buf_sz;
++
++	spinlock_t lock;
++};
++
++static int xenon_net_open (struct net_device *dev);
++static void xenon_net_tx_timeout (struct net_device *dev);
++static void xenon_net_init_ring (struct net_device *dev);
++static int xenon_net_start_xmit (struct sk_buff *skb, struct net_device *dev);
++static irqreturn_t xenon_net_interrupt(int irq, void *dev_id);
++static int xenon_net_close (struct net_device *dev);
++static void xenon_net_hw_start (struct net_device *dev);
++static int xenon_net_poll(struct net_device *dev, int *budget);
++
++#define XENONNET_W8(reg, val8)	writeb ((val8), ioaddr + (reg))
++#define XENONNET_W16(reg, val16)	writew ((val16), ioaddr + (reg))
++#define XENONNET_W32(reg, val32)	do { writel ((val32), ioaddr + (reg));  } while (0)
++#define XENONNET_R8(reg)		readb (ioaddr + (reg))
++#define XENONNET_R16(reg)		readw (ioaddr + (reg))
++#define XENONNET_R32(reg)		((u32) readl (ioaddr + (reg)))
++
++static int __devinit xenon_net_init_board (struct pci_dev *pdev,
++					 struct net_device **dev_out,
++					 void **ioaddr_out)
++{
++	void *ioaddr = NULL;
++	struct net_device *dev;
++	struct xenon_net_private *tp;
++	int rc, i;
++	unsigned long mmio_start, mmio_end, mmio_flags, mmio_len;
++
++	assert (pdev != NULL);
++	assert (ioaddr_out != NULL);
++
++	*ioaddr_out = NULL;
++	*dev_out = NULL;
++
++	/* dev zeroed in alloc_etherdev */
++	dev = alloc_etherdev (sizeof (*tp));
++	if (dev == NULL) {
++		dev_err(&pdev->dev, "unable to alloc new ethernet\n");
++		printk ("EXIT, returning -ENOMEM\n");
++		return -ENOMEM;
++	}
++	SET_MODULE_OWNER(dev);
++	SET_NETDEV_DEV(dev, &pdev->dev);
++	tp = dev->priv;
++
++	/* enable device (incl. PCI PM wakeup), and bus-mastering */
++	rc = pci_enable_device (pdev);
++	if (rc)
++		goto err_out;
++
++	mmio_start = pci_resource_start (pdev, 0);
++	mmio_end = pci_resource_end (pdev, 0);
++	mmio_flags = pci_resource_flags (pdev, 0);
++	mmio_len = pci_resource_len (pdev, 0);
++
++	/* make sure PCI base addr 0 is MMIO */
++	if (!(mmio_flags & IORESOURCE_MEM)) {
++		dev_err(&pdev->dev, "region #0 not an MMIO resource, aborting\n");
++		rc = -ENODEV;
++		goto err_out;
++	}
++
++	rc = pci_request_regions (pdev, MODNAME);
++	if (rc)
++		goto err_out;
++
++	pci_set_master (pdev);
++
++	/* ioremap MMIO region */
++	ioaddr = ioremap (mmio_start, mmio_len);
++	if (ioaddr == NULL) {
++		dev_err(&pdev->dev, "cannot remap MMIO, aborting\n");
++		rc = -EIO;
++		goto err_out_free_res;
++	}
++
++	i = register_netdev (dev);
++	if (i)
++		goto err_out_unmap;
++
++	*ioaddr_out = ioaddr;
++	*dev_out = dev;
++	return 0;
++
++err_out_unmap:
++#ifndef USE_IO_OPS
++	iounmap(ioaddr);
++err_out_free_res:
++#endif
++	pci_release_regions (pdev);
++err_out:
++	free_netdev (dev);
++	return rc;
++}
++
++
++static int __devinit xenon_net_init_one (struct pci_dev *pdev,
++				       const struct pci_device_id *ent)
++{
++	struct net_device *dev = NULL;
++	struct xenon_net_private *tp;
++	int i;
++	void *ioaddr = NULL;
++
++/* when built into the kernel, we only print version if device is found */
++#ifndef MODULE
++	static int printed_version;
++	if (!printed_version++)
++		printk(version);
++#endif
++
++	assert (pdev != NULL);
++	assert (ent != NULL);
++
++	i = xenon_net_init_board (pdev, &dev, &ioaddr);
++	if (i < 0) {
++		printk ("EXIT, returning %d\n", i);
++		return i;
++	}
++
++	tp = dev->priv;
++
++	assert (ioaddr != NULL);
++	assert (dev != NULL);
++	assert (tp != NULL);
++
++	memcpy(dev->dev_addr, "\0\0\1\2\3\4", 6);
++
++	dev->open = xenon_net_open;
++	dev->hard_start_xmit = xenon_net_start_xmit;
++	dev->stop = xenon_net_close;
++//	dev->get_stats = xenon_net_get_stats;
++//	dev->set_multicast_list = xenon_net_set_rx_mode;
++//	dev->do_ioctl = xenon_net_ioctl;
++	dev->poll = xenon_net_poll;
++	dev->weight = 64;
++
++	dev->tx_timeout = xenon_net_tx_timeout;
++	dev->watchdog_timeo = TX_TIMEOUT;
++
++	dev->irq = pdev->irq;
++	dev->base_addr = (unsigned long) ioaddr;
++
++	/* dev->priv/tp zeroed and aligned in alloc_etherdev */
++	tp = dev->priv;
++
++	tp->pdev = pdev;
++	tp->mmio_addr = ioaddr;
++	spin_lock_init(&tp->lock);
++
++	pci_set_drvdata(pdev, dev);
++
++	printk (KERN_INFO "%s: at 0x%lx, "
++		"%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x, "
++		"IRQ %d\n",
++		dev->name,
++		dev->base_addr,
++		dev->dev_addr[0], dev->dev_addr[1],
++		dev->dev_addr[2], dev->dev_addr[3],
++		dev->dev_addr[4], dev->dev_addr[5],
++		dev->irq);
++
++	return 0;
++}
++
++
++static void __devexit xenon_net_remove_one (struct pci_dev *pdev)
++{
++	struct net_device *dev = pci_get_drvdata (pdev);
++	struct xenon_net_private *np;
++
++	assert (dev != NULL);
++
++	np = dev->priv;
++	assert (np != NULL);
++
++	unregister_netdev (dev);
++
++#ifndef USE_IO_OPS
++	iounmap (np->mmio_addr);
++#endif /* !USE_IO_OPS */
++
++	pci_release_regions (pdev);
++
++	free_netdev (dev);
++
++	pci_set_drvdata (pdev, NULL);
++
++	pci_disable_device (pdev);
++}
++
++static int xenon_net_open (struct net_device *dev)
++{
++//	struct xenon_net_private *tp = dev->priv;
++	int retval;
++#ifdef XENONNET_DEBUG
++	void *ioaddr = tp->mmio_addr;
++#endif
++
++	retval = request_irq (dev->irq, xenon_net_interrupt, IRQF_SHARED, dev->name, dev);
++	if (retval) {
++		printk ("EXIT, returning %d\n", retval);
++		return retval;
++	}
++
++	xenon_net_init_ring (dev); /* allocates ringbuffer, clears them */
++	xenon_net_hw_start (dev);  /* start HW */
++
++	return 0;
++}
++
++
++/* Start the hardware at open or resume. */
++static void xenon_net_hw_start (struct net_device *dev)
++{
++	struct xenon_net_private *tp = dev->priv;
++	void *ioaddr = tp->mmio_addr;
++
++	/* Soft reset the chip. */
++	XENONNET_W32(InterruptMask, 0);
++	XENONNET_W32(Config0, 0x08558001);
++	udelay (100);
++	XENONNET_W32(Config0, 0x08550001);
++
++	XENONNET_W32(PhyControl, 4);
++	udelay (100);
++	XENONNET_W32(PhyControl, 0);
++
++	XENONNET_W16(MaxPacketSize, 0x5f2);
++
++	XENONNET_W32(Config1, 0x2360);
++
++	XENONNET_W16(MulticastFilterControl, 0x0e38);
++
++	/* Restore our idea of the MAC address. */
++	XENONNET_W16(Address0    , cpu_to_le16 (*(u16 *) (dev->dev_addr + 0)));
++	XENONNET_W32(Address0 + 2, cpu_to_le32 (*(u32 *) (dev->dev_addr + 2)));
++
++	XENONNET_W16(Address1    , cpu_to_le16 (*(u16 *) (dev->dev_addr + 0)));
++	XENONNET_W32(Address1 + 2, cpu_to_le32 (*(u32 *) (dev->dev_addr + 2)));
++
++	XENONNET_W32(MulticastHash, 0);
++	XENONNET_W32(MulticastHash + 4, 0);
++
++	XENONNET_W32(TxConfig, 0x00001c00);
++	XENONNET_W32(RxConfig, 0x00101c00);
++
++	XENONNET_W32(PhyConfig, 0x04001901);
++
++	atomic_set(&tp->rx_next, 0);
++
++	XENONNET_W32(TxConfig, 0x00001c00);
++	XENONNET_W32(TxDescriptorBase, tp->tx_descriptor_base_dma);
++	XENONNET_W32(TxConfig, 0x00011c00);
++	XENONNET_W32(TxDescriptorBase, tp->tx_descriptor_base_dma);
++	XENONNET_W32(TxConfig, 0x00001c00);
++
++	XENONNET_W32(RxDescriptorBase, tp->rx_descriptor_base_dma);
++	XENONNET_W32(PhyConfig, 0x04001001);
++	XENONNET_W32(Config1, 0);
++
++	XENONNET_W32(Config0, 0x08550001);
++
++	XENONNET_W32(TxConfig, 0x00001c01); /* enable tx */
++	XENONNET_W32(RxConfig, 0x00101c11); /* enable rx */
++
++	XENONNET_W32(InterruptMask, 0x00010054);
++	XENONNET_W32(InterruptStatus, 0x00010054);
++
++	netif_start_queue (dev);
++}
++
++static void xenon_set_tx_descriptor (struct xenon_net_private *tp, int index, u32 len, dma_addr_t addr, int valid)
++{
++	volatile u32 *descr = tp->tx_descriptor_base + index * 0x10;
++//	printk("xenon_set_tx_descriptor: %d, len=%x, addr=%x, valid=%d\n", index, len, (int)addr, valid);
++	descr[0] = cpu_to_le32(len);
++	descr[2] = cpu_to_le32(addr);
++	descr[3] = cpu_to_le32(len | ((index == TX_RING_SIZE - 1) ? 0x80000000 : 0));
++	wmb();
++	if (valid)
++		descr[1] = cpu_to_le32(0xc0230000);
++	else
++		descr[1] = 0;
++}
++
++static void xenon_set_rx_descriptor (struct xenon_net_private *tp, int index, u32 len, dma_addr_t addr, int valid)
++{
++	volatile u32 *descr = tp->rx_descriptor_base + index * 0x10;
++//	printk("xenon_set_rx_descriptor: %d, len=%x, addr=%x, valid=%d\n", index, len, (int)addr, valid);
++	descr[0] = cpu_to_le32(0);
++	descr[2] = cpu_to_le32(addr);
++	descr[3] = cpu_to_le32(len | ((index == RX_RING_SIZE - 1) ? 0x80000000 : 0));
++	wmb();
++	if (valid)
++		descr[1] = cpu_to_le32(0xc0000000);
++	else
++		descr[1] = 0;
++}
++
++
++/* Initialize the Rx and Tx rings, along with various 'dev' bits. */
++static void xenon_net_init_ring (struct net_device *dev)
++{
++	struct xenon_net_private *tp = dev->priv;
++	int i;
++
++	atomic_set (&tp->rx_next, 0);
++	atomic_set (&tp->tx_next_done, 0);
++	atomic_set (&tp->tx_next_free, 0);
++
++	for (i = 0; i < TX_RING_SIZE; i++) {
++		tp->tx_skbuff[i] = NULL;
++		tp->tx_skbuff_dma[i] = 0;
++	}
++
++			/* allocate descriptor memory */
++	tp->tx_descriptor_base = pci_alloc_consistent(tp->pdev,
++			TX_RING_SIZE * 0x10 + RX_RING_SIZE * 0x10,
++			&tp->tx_descriptor_base_dma);
++			/* rx is right after tx */
++	tp->rx_descriptor_base = tp->tx_descriptor_base + TX_RING_SIZE * 0x10;
++	tp->rx_descriptor_base_dma = tp->tx_descriptor_base_dma + TX_RING_SIZE * 0x10;
++
++	for (i = 0; i < TX_RING_SIZE; ++i)
++		xenon_set_tx_descriptor(tp, i, 0, 0, 0);
++
++	tp->rx_buf_sz = dev->mtu + 32;
++
++	for (i = 0; i < RX_RING_SIZE; ++i)
++	{
++		struct sk_buff *skb = dev_alloc_skb(tp->rx_buf_sz);
++		tp->rx_skbuff[i] = skb;
++		if (skb == NULL)
++			break;
++		skb->dev = dev;	/* Mark as being used by this device. */
++		tp->rx_skbuff_dma[i] = pci_map_single(tp->pdev, skb->data, tp->rx_buf_sz, PCI_DMA_FROMDEVICE);
++
++		xenon_set_rx_descriptor(tp, i, tp->rx_buf_sz, tp->rx_skbuff_dma[i], 1);
++	}
++}
++
++
++static void xenon_net_tx_clear (struct xenon_net_private *tp)
++{
++	int i;
++
++	atomic_set (&tp->tx_next_free, 0);
++	atomic_set (&tp->tx_next_done, 0);
++
++	/* Dump the unsent Tx packets. */
++	for (i = 0; i < TX_RING_SIZE; i++) {
++		if (tp->tx_skbuff_dma[i] != 0) {
++			pci_unmap_single (tp->pdev, tp->tx_skbuff_dma[i],
++					  tp->tx_skbuff[i]->len, PCI_DMA_TODEVICE);
++		}
++		if (tp->tx_skbuff[i])
++		{
++			dev_kfree_skb (tp->tx_skbuff[i]);
++			tp->tx_skbuff[i] = NULL;
++			tp->stats.tx_dropped++;
++		}
++	}
++}
++
++
++static void xenon_net_tx_timeout (struct net_device *dev)
++{
++	/* Error handling was taken from eexpress.c */
++	struct xenon_net_private *tp = netdev_priv(dev);
++	void *ioaddr = tp->mmio_addr;
++	int flags;
++
++	XENONNET_W32(InterruptMask, 0);
++
++	disable_irq(dev->irq);
++
++	printk(KERN_INFO "%s: transmit timed out, reseting.\n", dev->name);
++
++	/* Stop a shared interrupt from scavenging while we are. */
++	//spin_lock_irq(&tp->lock);
++	spin_lock_irqsave(&tp->lock, flags);
++	xenon_net_tx_clear(tp);
++	xenon_net_hw_start(dev);
++	//spin_unlock_irq(&tp->lock);
++	spin_unlock_irqrestore(&tp->lock, flags);
++	enable_irq(dev->irq);
++
++	dev->trans_start = jiffies;
++	tp->stats.tx_errors++;
++	netif_wake_queue(dev);
++
++	/*
++	printk(KERN_INFO "%s: transmit timed out, %s?\n", dev->name,
++		(SCB_complete(status)?"lost interrupt":
++		 "board on fire"));
++	printk("unhandled net tx timeout\n");
++	struct net_local *lp = netdev_priv(dev);
++	lp->stats.tx_errors++;
++	lp->txing = 0;
++	netif_wake_queue(dev);
++	*/
++}
++
++static int xenon_net_start_xmit (struct sk_buff *skb, struct net_device *dev)
++{
++	struct xenon_net_private *tp = dev->priv;
++	void *ioaddr = tp->mmio_addr;
++	int entry;
++	dma_addr_t mapping;
++	u32 len;
++	int flags;
++
++	spin_lock_irqsave(&tp->lock, flags);
++//	printk("xenon_net_start_xmit, next_free=%d, next_done=%d\n", atomic_read (&tp->tx_next_free), atomic_read (&tp->tx_next_done));
++
++	/* Calculate the next Tx descriptor entry. */
++	entry = atomic_read (&tp->tx_next_free) % TX_RING_SIZE;
++
++	assert (tp->tx_skbuff[entry] == NULL);
++	assert (tp->tx_skbuff_dma[entry] == 0);
++	assert (skb_shinfo(skb)->nr_frags == 0);
++
++	tp->tx_skbuff[entry] = skb;
++
++	len = skb->len;
++
++	mapping = pci_map_single(tp->pdev, skb->data, len, PCI_DMA_TODEVICE);
++	tp->tx_skbuff_dma[entry] = mapping;
++
++	xenon_set_tx_descriptor(tp, entry, skb->len, mapping, 1);
++
++	dev->trans_start = jiffies;
++	atomic_inc (&tp->tx_next_free);
++	if ((atomic_read (&tp->tx_next_free) - atomic_read (&tp->tx_next_done)) >= TX_RING_SIZE)
++	{
++//		printk("tx queue full\n");
++		netif_stop_queue (dev);
++	}
++
++
++//	printk("TxDescriptorStatus: %08x\n", XENONNET_R32(TxDescriptorStatus));
++
++//	printk("%s: Queued Tx packet at %p size %u to slot %d.\n",
++//		 dev->name, skb->data, skb->len, entry);
++
++	XENONNET_W32(TxConfig, 0x00101c11); /* enable TX */
++
++	spin_unlock_irqrestore(&tp->lock, flags);
++
++	return 0;
++}
++
++
++static void xenon_net_tx_interrupt (struct net_device *dev,
++				  struct xenon_net_private *tp,
++				  void *ioaddr)
++{
++	assert (dev != NULL);
++	assert (tp != NULL);
++	assert (ioaddr != NULL);
++
++//	printk("!! net tx interrupt, %d<%d\n", atomic_read(&tp->tx_next_done), atomic_read(&tp->tx_next_free));
++
++	while (atomic_read(&tp->tx_next_free) != atomic_read(&tp->tx_next_done))
++	{
++		int e = atomic_read(&tp->tx_next_done) % TX_RING_SIZE;
++
++		volatile u32 *descr = tp->tx_descriptor_base + e * 0x10;
++//		printk("entry %d: %08x\n", e, le32_to_cpu(descr[1]));
++		if (le32_to_cpu(descr[1]) & 0x80000000)
++			break;
++
++		if (!tp->tx_skbuff[e])
++		{
++			printk("spurious TX complete?!\n");
++			break;
++		}
++
++		pci_unmap_single(tp->pdev, tp->tx_skbuff_dma[e], tp->tx_skbuff[e]->len, PCI_DMA_TODEVICE);
++		dev_kfree_skb_irq(tp->tx_skbuff[e]);
++
++		tp->tx_skbuff[e] = 0;
++		tp->tx_skbuff_dma[e] = 0;
++
++		atomic_inc(&tp->tx_next_done);
++	}
++
++	if ((atomic_read(&tp->tx_next_free) - atomic_read(&tp->tx_next_done)) < TX_RING_SIZE)
++		netif_start_queue (dev);
++}
++
++static void xenon_net_rx_interrupt (struct net_device *dev,
++				  struct xenon_net_private *tp, void *ioaddr)
++{
++	assert (dev != NULL);
++	assert (tp != NULL);
++	assert (ioaddr != NULL);
++
++//	printk("!! net rx interrupt\n");
++
++	while (1)
++	{
++		int index = atomic_read(&tp->rx_next);
++		volatile u32 *descr = tp->rx_descriptor_base + index * 0x10;
++		dma_addr_t mapping;
++		u32 size;
++		struct sk_buff *skb = tp->rx_skbuff[index], *new_skb;
++
++		if (le32_to_cpu(descr[1]) & 0x80000000)
++		{
++//			printk("index %d is not busy.\n", index);
++			break;
++		}
++		size = le32_to_cpu(descr[0]) & 0xFFFF;
++//		printk("received frame (index %d): size %d\n", index, size);
++
++		mapping = tp->rx_skbuff_dma[index];
++
++		new_skb = dev_alloc_skb(tp->rx_buf_sz);
++		new_skb->dev = dev;
++
++		pci_unmap_single(tp->pdev, mapping, tp->rx_buf_sz, PCI_DMA_FROMDEVICE);
++
++		skb->ip_summed = CHECKSUM_NONE;
++		skb_put(skb, size);
++		skb->protocol = eth_type_trans (skb, dev);
++//		printk("detected protocol: %08x\n", skb->protocol);
++		netif_receive_skb(skb);
++		dev->last_rx = jiffies;
++
++		mapping = tp->rx_skbuff_dma[index] = pci_map_single(tp->pdev,
++				new_skb->data, tp->rx_buf_sz, PCI_DMA_FROMDEVICE);
++		tp->rx_skbuff[index] = new_skb;
++
++		xenon_set_rx_descriptor(tp, index, tp->rx_buf_sz, tp->rx_skbuff_dma[index], 1);
++
++		index++; index %= RX_RING_SIZE; atomic_set(&tp->rx_next, index);
++	}
++	XENONNET_W32(RxConfig, 0x00101c11);
++}
++
++static int xenon_net_poll(struct net_device *dev, int *budget)
++{
++	struct xenon_net_private *tp = dev->priv;
++	xenon_net_rx_interrupt(dev, tp, tp->mmio_addr);
++
++	__netif_rx_complete(dev);
++	return 0;
++}
++
++static irqreturn_t xenon_net_interrupt(int irq, void *dev_id)
++{
++	struct net_device *dev = dev_id;
++	struct xenon_net_private *tp = dev->priv;
++	void *ioaddr = tp->mmio_addr;
++	u32 status;
++
++	spin_lock (&tp->lock);
++
++	status = XENONNET_R32(InterruptStatus);
++
++	if (status & 0x40)
++	{
++		if (netif_rx_schedule_prep(dev)) {
++			status &= ~0x40;
++			__netif_rx_schedule (dev);
++		}
++	}
++
++	if (status & 4)
++	{
++		xenon_net_tx_interrupt(dev, tp, ioaddr);
++		status &= ~0x4;
++	}
++
++//	if (status)
++//		printk("other interrupt: %08x\n", status);
++
++	spin_unlock (&tp->lock);
++
++	return IRQ_HANDLED;
++}
++
++
++static int xenon_net_close (struct net_device *dev)
++{
++	struct xenon_net_private *tp = dev->priv;
++//	void *ioaddr = tp->mmio_addr;
++	unsigned long flags;
++
++	printk ("ENTER\n");
++
++	netif_stop_queue (dev);
++	spin_lock_irqsave (&tp->lock, flags);
++	spin_unlock_irqrestore (&tp->lock, flags);
++	synchronize_irq (dev->irq);
++	free_irq (dev->irq, dev);
++	xenon_net_tx_clear (tp);
++
++	pci_free_consistent(tp->pdev, TX_RING_SIZE * 0x10 + RX_RING_SIZE * 0x10,
++			    tp->tx_descriptor_base, tp->tx_descriptor_base_dma);
++	tp->tx_descriptor_base = NULL;
++	tp->rx_descriptor_base = NULL;
++
++	printk ("EXIT\n");
++	return 0;
++}
++
++
++static struct pci_driver xenon_net_pci_driver = {
++	.name		= MODNAME,
++	.id_table	= xenon_net_pci_tbl,
++	.probe		= xenon_net_init_one,
++	.remove		= __devexit_p(xenon_net_remove_one),
++};
++
++
++static int __init xenon_net_init_module (void)
++{
++/* when a module, this is printed whether or not devices are found in probe */
++#ifdef MODULE
++	printk(version);
++#endif
++	printk("xenon_net_init_module\n");
++	return pci_module_init (&xenon_net_pci_driver);
++}
++
++
++static void __exit xenon_net_cleanup_module (void)
++{
++	pci_unregister_driver (&xenon_net_pci_driver);
++}
++
++
++module_init(xenon_net_init_module);
++module_exit(xenon_net_cleanup_module);
+
+--
+
+

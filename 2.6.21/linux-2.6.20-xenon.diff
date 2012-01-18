@@ -1,0 +1,956 @@
+This patch adds platform support for the 'Xenon' platform (Xbox 360).
+
+Signed-off-by: Felix Domke <tmbinc@elitedvb.net>
+
+---
+ arch/powerpc/Kconfig                     |    7 
+ arch/powerpc/boot/Makefile               |    5 
+ arch/powerpc/kernel/cputable.c           |   12 +
+ arch/powerpc/platforms/Makefile          |    1 
+ arch/powerpc/platforms/xenon/Makefile    |    4 
+ arch/powerpc/platforms/xenon/interrupt.c |  303 +++++++++++++++++++++++++++++++
+ arch/powerpc/platforms/xenon/interrupt.h |   11 +
+ arch/powerpc/platforms/xenon/pci.c       |  188 +++++++++++++++++++
+ arch/powerpc/platforms/xenon/setup.c     |  151 +++++++++++++++
+ arch/powerpc/platforms/xenon/smp.c       |  157 ++++++++++++++++
+ include/asm-powerpc/cputable.h           |    6 
+ 11 files changed, 845 insertions(+)
+
+Index: linux-2.6.20/arch/powerpc/Kconfig
+===================================================================
+--- linux-2.6.20.orig/arch/powerpc/Kconfig	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/arch/powerpc/Kconfig	2007-03-07 19:01:21.000000000 +0100
+@@ -463,6 +463,13 @@
+ 	select PPC_970_NAP
+ 	default y
+ 
++config PPC_XENON
++	bool "Xenon"
++	depends on PPC_MULTIPLATFORM  && PPC64
++	select PPC_RTAS
++	select PPC_NATIVE
++	default y
++
+ config PPC_PREP
+ 	bool "PowerPC Reference Platform (PReP) based machines"
+ 	depends on PPC_MULTIPLATFORM && PPC32 && BROKEN
+Index: linux-2.6.20/arch/powerpc/boot/Makefile
+===================================================================
+--- linux-2.6.20.orig/arch/powerpc/boot/Makefile	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/arch/powerpc/boot/Makefile	2007-03-07 19:01:21.000000000 +0100
+@@ -149,6 +149,10 @@
+ $(obj)/zImage.initrd.miboot: vmlinux $(wrapperbits)
+ 	$(call cmd,wrap_initrd,miboot)
+ 
++$(obj)/zImage.xenon: vmlinux $(wrapperbits)
++	$(call cmd,wrap,chrp)
++	${CROSS}objcopy -O elf32-powerpc vmlinux vmlinux.xenon
++
+ $(obj)/zImage.ps3: vmlinux
+ 	$(STRIP) -s -R .comment $< -o $@
+ 
+@@ -161,6 +165,7 @@
+ image-$(CONFIG_PPC_PSERIES)		+= zImage.pseries
+ image-$(CONFIG_PPC_MAPLE)		+= zImage.pseries
+ image-$(CONFIG_PPC_IBM_CELL_BLADE)	+= zImage.pseries
++image-$(CONFIG_PPC_XENON)		+= zImage.xenon
+ image-$(CONFIG_PPC_PS3)			+= zImage.ps3
+ image-$(CONFIG_PPC_CHRP)		+= zImage.chrp
+ image-$(CONFIG_PPC_EFIKA)		+= zImage.chrp
+Index: linux-2.6.20/arch/powerpc/kernel/cputable.c
+===================================================================
+--- linux-2.6.20.orig/arch/powerpc/kernel/cputable.c	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/arch/powerpc/kernel/cputable.c	2007-03-07 19:01:21.000000000 +0100
+@@ -355,6 +355,18 @@
+ 		.num_pmcs		= 6,
+ 		.platform		= "pa6t",
+ 	},
++	{	/* Xenon */
++		.pvr_mask		= 0xffff0000,
++		.pvr_value	= 0x00710000,
++		.cpu_name		= "Xenon",
++		.cpu_features		= CPU_FTRS_XENON,
++		.cpu_user_features	= COMMON_USER_PPC64 |
++			PPC_FEATURE_HAS_ALTIVEC_COMP |
++			PPC_FEATURE_SMT,
++		.icache_bsize		= 128,
++		.dcache_bsize		= 128,
++		.platform		= "xenon",
++	},
+ 	{	/* default match */
+ 		.pvr_mask		= 0x00000000,
+ 		.pvr_value		= 0x00000000,
+Index: linux-2.6.20/arch/powerpc/platforms/Makefile
+===================================================================
+--- linux-2.6.20.orig/arch/powerpc/platforms/Makefile	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/arch/powerpc/platforms/Makefile	2007-03-07 19:01:21.000000000 +0100
+@@ -18,3 +18,4 @@
+ obj-$(CONFIG_PPC_CELL)		+= cell/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
+ obj-$(CONFIG_EMBEDDED6xx)	+= embedded6xx/
++obj-$(CONFIG_PPC_XENON)	  += xenon/
+Index: linux-2.6.20/arch/powerpc/platforms/xenon/Makefile
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/arch/powerpc/platforms/xenon/Makefile	2007-03-07 19:01:21.000000000 +0100
+@@ -0,0 +1,4 @@
++obj-$(CONFIG_PPC_XENON)		+= setup.o interrupt.o pci.o
++ifeq ($(CONFIG_SMP),y)
++obj-$(CONFIG_PPC_XENON)		+= smp.o
++endif
+Index: linux-2.6.20/arch/powerpc/platforms/xenon/interrupt.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/arch/powerpc/platforms/xenon/interrupt.c	2007-03-07 19:01:21.000000000 +0100
+@@ -0,0 +1,303 @@
++/*
++ * Xenon interrupt controller,
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License v2
++ * as published by the Free Software Foundation.
++ */
++
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/module.h>
++#include <linux/percpu.h>
++#include <linux/types.h>
++#include <linux/ioport.h>
++
++#include <asm/io.h>
++#include <asm/pgtable.h>
++#include <asm/prom.h>
++#include <asm/ptrace.h>
++#include <asm/machdep.h>
++
++#include "interrupt.h"
++
++static void *iic_base,
++	*bridge_base, // ea000000
++	*biu,         // e1000000
++	*graphics;    // ec800000
++static struct irq_host *host;
++
++#define XENON_NR_IRQS 128
++
++#define PRIO_IPI_4       0x08
++#define PRIO_IPI_3       0x10
++#define PRIO_SMM         0x14
++#define PRIO_SFCX        0x18
++#define PRIO_SATA_HDD    0x20
++#define PRIO_SATA_CDROM  0x24
++#define PRIO_OHCI_0      0x2c
++#define PRIO_EHCI_0      0x30
++#define PRIO_OHCI_1      0x34
++#define PRIO_EHCI_1      0x38
++#define PRIO_XMA         0x40
++#define PRIO_AUDIO       0x44
++#define PRIO_ENET        0x4C
++#define PRIO_XPS         0x54
++#define PRIO_GRAPHICS    0x58
++#define PRIO_PROFILER    0x60
++#define PRIO_BIU         0x64
++#define PRIO_IOC         0x68
++#define PRIO_FSB         0x6c
++#define PRIO_IPI_2       0x70
++#define PRIO_CLOCK       0x74
++#define PRIO_IPI_1       0x78
++
++/* bridge (PCI) IRQ -> CPU IRQ */
++static int xenon_pci_irq_map[] = {
++		PRIO_CLOCK, PRIO_SATA_CDROM, PRIO_SATA_HDD, PRIO_SMM,
++		PRIO_OHCI_0, PRIO_EHCI_0, PRIO_OHCI_1, PRIO_EHCI_1,
++		-1, -1, PRIO_ENET, PRIO_XMA,
++		PRIO_AUDIO, PRIO_SFCX, -1, -1};
++
++static void disconnect_pci_irq(int prio)
++{
++	int i;
++
++	for (i=0; i<0x10; ++i)
++		if (xenon_pci_irq_map[i] == prio)
++			writel(0, bridge_base + 0x10 + i * 4);
++}
++
++	/* connects an PCI IRQ to CPU #0 */
++static void connect_pci_irq(int prio)
++{
++	int i;
++
++	for (i=0; i<0x10; ++i)
++		if (xenon_pci_irq_map[i] == prio)
++			writel(0x0800180 | (xenon_pci_irq_map[i]/4), bridge_base + 0x10 + i * 4);
++}
++
++static void iic_mask(unsigned int irq)
++{
++	disconnect_pci_irq(irq);
++}
++
++static void iic_unmask(unsigned int irq)
++{
++	int i;
++	connect_pci_irq(irq);
++	for (i=0; i<6; ++i)
++		__raw_writeq(0, iic_base + i * 0x1000 + 0x68);
++}
++
++void xenon_init_irq_on_cpu(int cpu)
++{
++		/* init that cpu's interrupt controller */
++	__raw_writeq(0x7C, iic_base + cpu * 0x1000 + 0x70);
++	__raw_writeq(0, iic_base + cpu * 0x1000 + 0x8);      /* irql */
++	__raw_writeq(1<<cpu, iic_base + cpu * 0x1000);       /* "who am i" */
++
++		/* ack all outstanding interrupts */
++	while (__raw_readq(iic_base + cpu * 0x1000 + 0x50) != 0x7C);
++	__raw_writeq(0, iic_base + cpu * 0x1000 + 0x68);
++}
++
++static void iic_eoi(unsigned int irq)
++{
++	int cpu = hard_smp_processor_id();
++	void *my_iic_base = iic_base + cpu * 0x1000;
++	__raw_writeq(0, my_iic_base + 0x68);
++	mb();
++	__raw_readq(my_iic_base + 0x8);
++}
++
++static struct irq_chip xenon_pic = {
++	.typename = " XENON-PIC ",
++	.mask = iic_mask,
++	.unmask = iic_unmask,
++	.eoi = iic_eoi,
++};
++
++/* Get an IRQ number from the pending state register of the IIC */
++static unsigned int iic_get_irq(void)
++{
++	int cpu = hard_smp_processor_id();
++	void *my_iic_base;
++	int index;
++
++	my_iic_base = iic_base + cpu * 0x1000;
++
++	index = __raw_readq(my_iic_base + 0x50) & 0x7F; /* read destructive pending interrupt */
++
++	__raw_writeq(0x7c, my_iic_base + 0x08); /* current task priority */
++	mb();
++	__raw_readq(my_iic_base + 0x8);
++
++		/* HACK: we will handle some (otherwise unhandled) interrupts here
++		   to prevent them flooding. */
++	switch (index)
++	{
++	case PRIO_GRAPHICS:
++		writel(0, graphics + 0xed0);
++		writel(0, graphics + 0x6540);
++		break;
++	case PRIO_IOC:
++	{
++		writel(0, biu + 0x4002c);
++		break;
++	}
++	case PRIO_CLOCK:
++	{
++		writel(0, bridge_base + 0x106C);
++		break;
++	}
++	default:
++		break;
++	}
++
++		/* HACK: we need to ACK unhandled interrupts here */
++	if (!irq_desc[index].action)
++	{
++		printk(KERN_WARNING "IRQ %02x unhandled, doing local EOI\n", index);
++		__raw_writeq(0, my_iic_base + 0x60);
++		iic_eoi(index);
++		return NO_IRQ;
++	}
++
++	if (index == 0x7C)
++		return NO_IRQ;
++	else
++		return index;
++}
++
++static int xenon_irq_host_map(struct irq_host *h, unsigned int virq,
++				irq_hw_number_t hw)
++{
++	set_irq_chip_and_handler(virq, &xenon_pic, handle_percpu_irq);
++	return 0;
++}
++
++static int xenon_irq_host_match(struct irq_host *h, struct device_node *node)
++{
++	return h->host_data != NULL && node == h->host_data;
++}
++
++static struct irq_host_ops xenon_irq_host_ops = {
++	.map = xenon_irq_host_map,
++	.match = xenon_irq_host_match,
++};
++
++void __init xenon_iic_init_IRQ(void)
++{
++	int i;
++	struct device_node *dn;
++
++	printk("XENON init IRQ\n");
++
++			/* search for our interrupt controller inside the device tree */
++	for (dn = NULL;
++	     (dn = of_find_node_by_name(dn,"interrupt-controller")) != NULL;) {
++		if (!device_is_compatible(dn,
++				     "xenon"))
++			continue;
++
++		irq_set_virq_count(0x80);
++		iic_base = ioremap_nocache(0x20000050000, 0x10000);
++
++		host = irq_alloc_host(IRQ_HOST_MAP_NOMAP, 0, &xenon_irq_host_ops, 0);
++		host->host_data = of_node_get(dn);
++		BUG_ON(host == NULL);
++		irq_set_default_host(host);
++	}
++
++	ppc_md.get_irq = iic_get_irq;
++
++	bridge_base = ioremap_nocache(0xea000000, 0x10000);
++	biu = ioremap_nocache(0xe1000000, 0x2000000);
++	graphics = ioremap_nocache(0xec800000, 0x10000);
++
++		/* initialize interrupts */
++	writel(0, bridge_base);
++	writel(0x40000000, bridge_base + 4);
++
++	writel(0x40000000, biu + 0x40074);
++	writel(0xea000050, biu + 0x40078);
++
++	writel(0, bridge_base + 0xc);
++	writel(0x3, bridge_base);
++
++	/* disconnect all PCI IRQs until they are requested */
++	for (i=0; i<0x10; ++i)
++		writel(0, bridge_base + 0x10 + i * 4);
++
++	xenon_init_irq_on_cpu(0);
++}
++
++#ifdef CONFIG_SMP
++
++static int ipi_to_prio(int ipi)
++{
++	switch (ipi)
++	{
++	case PPC_MSG_CALL_FUNCTION:
++		return PRIO_IPI_1;
++		break;
++	case PPC_MSG_RESCHEDULE:
++		return PRIO_IPI_2;
++		break;
++	//case PPC_MSG_MIGRATE_TASK:
++	//	return PRIO_IPI_3;
++	//	break;
++	case PPC_MSG_DEBUGGER_BREAK:
++		return PRIO_IPI_4;
++		break;
++	default:
++		BUG();
++	}
++	return 0;
++}
++
++void xenon_cause_IPI(int target, int msg)
++{
++	int ipi_prio;
++
++	ipi_prio = ipi_to_prio(msg);
++
++	__raw_writeq( (0x10000<<target) | ipi_prio, iic_base + 0x10 + hard_smp_processor_id() * 0x1000);
++}
++
++static irqreturn_t xenon_ipi_action(int irq, void *dev_id)
++{
++	int ipi = (int)(long)dev_id;
++	smp_message_recv(ipi);
++	return IRQ_HANDLED;
++}
++
++static void xenon_request_ipi(int ipi, const char *name)
++{
++	int prio = ipi_to_prio(ipi), virq;
++
++	virq = irq_create_mapping(host, prio);
++	if (virq == NO_IRQ)
++	{
++		printk(KERN_ERR
++				"xenon_request_ipi: failed to map IPI%d (%s)\n", prio, name);
++		return;
++	}
++
++	if (request_irq(prio, xenon_ipi_action, IRQF_DISABLED,
++			name, (void *)(long)ipi))
++		printk(KERN_ERR "request irq for ipi failed!\n");
++}
++
++void xenon_request_IPIs(void)
++{
++	xenon_request_ipi(PPC_MSG_CALL_FUNCTION, "IPI-call");
++	xenon_request_ipi(PPC_MSG_RESCHEDULE, "IPI-resched");
++#ifdef CONFIG_DEBUGGER
++	xenon_request_ipi(PPC_MSG_DEBUGGER_BREAK, "IPI-debug");
++#endif /* CONFIG_DEBUGGER */
++}
++
++#endif
+Index: linux-2.6.20/arch/powerpc/platforms/xenon/interrupt.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/arch/powerpc/platforms/xenon/interrupt.h	2007-03-07 19:01:21.000000000 +0100
+@@ -0,0 +1,11 @@
++#ifndef ASM_XENON_PIC_H
++#define ASM_XENON_PIC_H
++#ifdef __KERNEL__
++
++extern void xenon_init_irq_on_cpu(int cpu);
++extern void __init xenon_iic_init_IRQ(void);
++extern void xenon_cause_IPI(int target, int msg);
++extern void xenon_request_IPIs(void);
++
++#endif
++#endif /* ASM_XENON_PIC_H */
+Index: linux-2.6.20/arch/powerpc/platforms/xenon/pci.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/arch/powerpc/platforms/xenon/pci.c	2007-03-07 19:01:21.000000000 +0100
+@@ -0,0 +1,188 @@
++/*
++ * based on:
++ * Copyright (C) 2004 Benjamin Herrenschmuidt (benh@kernel.crashing.org),
++ *		      IBM Corp.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version
++ * 2 of the License, or (at your option) any later version.
++ */
++
++// #define DEBUG
++
++#include <linux/kernel.h>
++#include <linux/pci.h>
++#include <linux/delay.h>
++#include <linux/string.h>
++#include <linux/init.h>
++#include <linux/bootmem.h>
++
++#include <asm/sections.h>
++#include <asm/io.h>
++#include <asm/prom.h>
++#include <asm/pci-bridge.h>
++#include <asm/machdep.h>
++#include <asm/iommu.h>
++#include <asm/ppc-pci.h>
++
++#ifdef DEBUG
++#define DBG(x...) printk(x)
++#else
++#define DBG(x...)
++#endif
++
++
++#define OFFSET(devfn) ((devfn+256)<<12)
++
++static int xenon_pci_read_config(struct pci_bus *bus, unsigned int devfn,
++			      int offset, int len, u32 *val)
++{
++	struct pci_controller *hose;
++	void* addr;
++
++	hose = pci_bus_to_host(bus);
++	if (hose == NULL)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++
++	DBG("xenon_pci_read_config,slot %d, func %d\n", PCI_SLOT(devfn), PCI_FUNC(devfn));
++
++	if (PCI_SLOT(devfn) >= 32)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++	if (PCI_SLOT(devfn) == 3)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++	if (PCI_SLOT(devfn) == 6)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++	if (PCI_SLOT(devfn) >= 0xB)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++	if (PCI_FUNC(devfn) >= 2)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++	DBG("xenon_pci_read_config, %p, devfn=%d, offset=%d, len=%d\n", bus, devfn, offset, len);
++
++	addr = ((void*)hose->cfg_addr) + OFFSET(devfn) + offset;
++
++	/*
++	 * Note: the caller has already checked that offset is
++	 * suitably aligned and that len is 1, 2 or 4.
++	 */
++	switch (len) {
++	case 1:
++		*val = in_8((u8 *)addr);
++		break;
++	case 2:
++		*val = in_le16((u16 *)addr);
++		break;
++	default:
++		*val = in_le32((u32 *)addr);
++		break;
++	}
++	DBG("->%08x\n", (int)*val);
++	return PCIBIOS_SUCCESSFUL;
++}
++
++static int xenon_pci_write_config(struct pci_bus *bus, unsigned int devfn,
++			       int offset, int len, u32 val)
++{
++	struct pci_controller *hose;
++	void *addr;
++
++	hose = pci_bus_to_host(bus);
++	if (hose == NULL)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++
++	if (PCI_SLOT(devfn) >= 32)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++
++	if (PCI_SLOT(devfn) == 3)
++		return PCIBIOS_DEVICE_NOT_FOUND;
++	DBG("xenon_pci_write_config, %p, devfn=%d, offset=%x, len=%d, val=%08x\n", bus, devfn, offset, len, val);
++
++	addr = ((void*)hose->cfg_addr) + OFFSET(devfn) + offset;
++	if (len == 4)
++		DBG("was: %08x\n", readl(addr));
++	if (len == 2)
++		DBG("was: %04x\n", readw(addr));
++	if (len == 1)
++		DBG("was: %02x\n", readb(addr));
++	/*
++	 * Note: the caller has already checked that offset is
++	 * suitably aligned and that len is 1, 2 or 4.
++	 */
++	switch (len) {
++	case 1:
++		writeb(val, addr);
++		break;
++	case 2:
++		writew(val, addr);
++		break;
++	default:
++		writel(val, addr);
++		break;
++	}
++	return PCIBIOS_SUCCESSFUL;
++}
++
++static struct pci_ops xenon_pci_ops =
++{
++	xenon_pci_read_config,
++	xenon_pci_write_config
++};
++
++void __init xenon_pci_init(void)
++{
++	struct pci_controller *hose;
++	struct device_node *np, *root;
++	struct device_node *dev = NULL;
++
++	root = of_find_node_by_path("/");
++	if (root == NULL) {
++		printk(KERN_CRIT "xenon_pci_init: can't find root of device tree\n");
++		return;
++	}
++	for (np = NULL; (np = of_get_next_child(root, np)) != NULL;) {
++		if (np->name == NULL)
++			continue;
++		if (strcmp(np->name, "pci") == 0) {
++			of_node_get(np);
++			dev = np;
++		}
++	}
++	of_node_put(root);
++
++	if (!dev)
++	{
++		printk("couldn't find PCI node!\n");
++		return;
++	}
++
++	hose = pcibios_alloc_controller(dev);
++	if (hose == NULL)
++	{
++		printk("pcibios_alloc_controller failed!\n");
++		return;
++	}
++
++	hose->first_busno = 0;
++	hose->last_busno = 0;
++
++	hose->ops = &xenon_pci_ops;
++	hose->cfg_addr = ioremap(0xd0000000, 0x1000000);
++
++	pci_process_bridge_OF_ranges(hose, dev, 1);
++	pci_setup_phb_io(hose, 1);
++
++	/* Setup the linkage between OF nodes and PHBs */
++	pci_devs_phb_init();
++
++	/* Tell pci.c to not change any resource allocations.  */
++	pci_probe_only = 1;
++
++	of_node_put(dev);
++	DBG("PCI initialized\n");
++
++	pci_io_base = 0;
++
++	ppc_md.pci_dma_dev_setup = NULL;
++	ppc_md.pci_dma_bus_setup = NULL;
++	pci_dma_ops = &dma_direct_ops;
++}
+Index: linux-2.6.20/arch/powerpc/platforms/xenon/setup.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/arch/powerpc/platforms/xenon/setup.c	2007-03-07 19:01:21.000000000 +0100
+@@ -0,0 +1,151 @@
++/*
++ *  linux/arch/powerpc/platforms/xenon/xenon_setup.c
++ *
++ *  Copyright (C) 1995  Linus Torvalds
++ *  Adapted from 'alpha' version by Gary Thomas
++ *  Modified by Cort Dougan (cort@cs.nmt.edu)
++ *  Modified by PPC64 Team, IBM Corp
++ *  Modified by Cell Team, IBM Deutschland Entwicklung GmbH
++ *  Modified by anonymous xbox360 hacker
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version
++ * 2 of the License, or (at your option) any later version.
++ */
++#define DEBUG
++
++#include <linux/sched.h>
++#include <linux/kernel.h>
++#include <linux/mm.h>
++#include <linux/stddef.h>
++#include <linux/unistd.h>
++#include <linux/slab.h>
++#include <linux/user.h>
++#include <linux/reboot.h>
++#include <linux/init.h>
++#include <linux/delay.h>
++#include <linux/irq.h>
++#include <linux/seq_file.h>
++#include <linux/root_dev.h>
++#include <linux/console.h>
++#include <linux/mutex.h>
++#include <linux/memory_hotplug.h>
++
++#include <asm/mmu.h>
++#include <asm/processor.h>
++#include <asm/io.h>
++#include <asm/kexec.h>
++#include <asm/pgtable.h>
++#include <asm/prom.h>
++#include <asm/rtas.h>
++#include <asm/pci-bridge.h>
++#include <asm/iommu.h>
++#include <asm/dma.h>
++#include <asm/machdep.h>
++#include <asm/time.h>
++#include <asm/nvram.h>
++#include <asm/cputable.h>
++#include <asm/ppc-pci.h>
++#include <asm/irq.h>
++#include <asm/spu.h>
++#include <asm/spu_priv1.h>
++#include <asm/udbg.h>
++#include <asm/cacheflush.h>
++#include "interrupt.h"
++
++
++#ifdef DEBUG
++#define DBG(fmt...) udbg_printf(fmt)
++#else
++#define DBG(fmt...)
++#endif
++
++void __init xenon_pci_init(void);
++#ifdef CONFIG_SMP
++extern void smp_init_xenon(void);
++#endif
++
++
++static void xenon_show_cpuinfo(struct seq_file *m)
++{
++	struct device_node *root;
++	const char *model = "";
++
++	root = of_find_node_by_path("/");
++	if (root)
++		model = get_property(root, "model", NULL);
++	seq_printf(m, "machine\t\t: CHRP %s\n", model);
++	of_node_put(root);
++}
++
++static void xenon_progress(char *s, unsigned short hex)
++{
++	printk("*** %04x : %s\n", hex, s ? s : "");
++}
++
++static void __init xenon_pcibios_fixup(void)
++{
++	struct pci_dev *dev = NULL;
++
++	for_each_pci_dev(dev)
++		pci_read_irq_line(dev);
++}
++
++static void __init xenon_init_irq(void)
++{
++	xenon_iic_init_IRQ();
++}
++
++static void __init xenon_setup_arch(void)
++{
++#ifdef CONFIG_SMP
++	smp_init_xenon();
++#endif
++
++	/* init to some ~sane value until calibrate_delay() runs */
++	loops_per_jiffy = 50000000;
++
++	if (ROOT_DEV == 0) {
++		printk("No ramdisk, default root is /dev/hda2\n");
++		ROOT_DEV = Root_HDA2;
++	}
++
++	xenon_pci_init();
++	/* Find and initialize PCI host bridges */
++	init_pci_config_tokens();
++#ifdef CONFIG_DUMMY_CONSOLE
++	conswitchp = &dummy_con;
++#endif
++}
++
++void __init xenon_hpte_init(unsigned long htab_size);
++
++static int __init xenon_probe(void)
++{
++	hpte_init_native();
++
++	return 1;
++}
++
++static int xenon_check_legacy_ioport(unsigned int baseport)
++{
++	return -ENODEV;
++}
++
++define_machine(xenon) {
++	.name			= "Xenon",
++	.probe			= xenon_probe,
++	.setup_arch		= xenon_setup_arch,
++	.show_cpuinfo		= xenon_show_cpuinfo,
++	.calibrate_decr		= generic_calibrate_decr,
++	.check_legacy_ioport	= xenon_check_legacy_ioport,
++	.progress		= xenon_progress,
++	.init_IRQ       	= xenon_init_irq,
++	.pcibios_fixup		= xenon_pcibios_fixup,
++#ifdef CONFIG_KEXEC
++	.machine_kexec		= default_machine_kexec,
++	.machine_kexec_prepare	= default_machine_kexec_prepare,
++	.machine_crash_shutdown	= default_machine_crash_shutdown,
++#endif
++};
+Index: linux-2.6.20/arch/powerpc/platforms/xenon/smp.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/arch/powerpc/platforms/xenon/smp.c	2007-03-07 19:01:21.000000000 +0100
+@@ -0,0 +1,157 @@
++/*
++ * SMP support for Xenon machines.
++ *
++ * Based on CBE's smp.c.
++ *
++ *      This program is free software; you can redistribute it and/or
++ *      modify it under the terms of the GNU General Public License
++ *      as published by the Free Software Foundation; either version
++ *      2 of the License, or (at your option) any later version.
++ */
++
++// #define DEBUG
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/sched.h>
++#include <linux/smp.h>
++#include <linux/interrupt.h>
++#include <linux/delay.h>
++#include <linux/init.h>
++#include <linux/spinlock.h>
++#include <linux/cache.h>
++#include <linux/err.h>
++#include <linux/sysdev.h>
++#include <linux/cpu.h>
++
++#include <asm/ptrace.h>
++#include <asm/atomic.h>
++#include <asm/irq.h>
++#include <asm/page.h>
++#include <asm/pgtable.h>
++#include <asm/io.h>
++#include <asm/prom.h>
++#include <asm/smp.h>
++#include <asm/paca.h>
++#include <asm/time.h>
++#include <asm/machdep.h>
++#include <asm/cputable.h>
++#include <asm/firmware.h>
++#include <asm/system.h>
++#include <asm/rtas.h>
++
++#ifdef DEBUG
++#define DBG(fmt...) printk(fmt)
++#else
++#define DBG(fmt...)
++#endif
++
++/*
++ * The primary thread of each non-boot processor is recorded here before
++ * smp init.
++ */
++static cpumask_t of_spin_map;
++
++void smp_init_xenon(void);
++
++extern void xenon_request_IPIs(void);
++extern void xenon_init_irq_on_cpu(int cpu);
++
++static int __init smp_xenon_probe(void)
++{
++	xenon_request_IPIs();
++
++	return cpus_weight(cpu_possible_map);
++}
++
++static void __devinit smp_xenon_setup_cpu(int cpu)
++{
++	if (cpu != boot_cpuid)
++		xenon_init_irq_on_cpu(cpu);
++}
++
++static void __devinit smp_xenon_kick_cpu(int nr)
++{
++	BUG_ON(nr < 0 || nr >= NR_CPUS);
++
++	DBG("smp_xenon_kick_cpu %d\n", nr);
++
++	/*
++	 * The processor is currently spinning, waiting for the
++	 * cpu_start field to become non-zero After we set cpu_start,
++	 * the processor will continue on to secondary_start
++	 */
++	paca[nr].cpu_start = 1;
++}
++
++static int smp_xenon_cpu_bootable(unsigned int nr)
++{
++	/* Special case - we inhibit secondary thread startup
++	 * during boot if the user requests it.  Odd-numbered
++	 * cpus are assumed to be secondary threads.
++	 */
++	if (system_state < SYSTEM_RUNNING &&
++	    cpu_has_feature(CPU_FTR_SMT) &&
++	    !smt_enabled_at_boot && nr % 2 != 0)
++		return 0;
++
++		/* FIXME: secondary threads behave instable. */
++	if (nr & 1)
++		return 0;
++
++	return 1;
++}
++
++extern void xenon_cause_IPI(int target, int msg);
++
++static void smp_xenon_message_pass(int target, int msg)
++{
++	unsigned int i;
++
++	if (target < NR_CPUS) {
++		xenon_cause_IPI(target, msg);
++	} else {
++		for_each_online_cpu(i) {
++			if (target == MSG_ALL_BUT_SELF
++			    && i == smp_processor_id())
++				continue;
++			xenon_cause_IPI(i, msg);
++		}
++	}
++}
++
++static struct smp_ops_t xenon_smp_ops = {
++	.message_pass	= smp_xenon_message_pass,
++	.probe		= smp_xenon_probe,
++	.kick_cpu	= smp_xenon_kick_cpu,
++	.setup_cpu	= smp_xenon_setup_cpu,
++	.cpu_bootable	= smp_xenon_cpu_bootable,
++};
++
++/* This is called very early */
++void __init smp_init_xenon(void)
++{
++	int i;
++
++	DBG(" -> smp_init_xenon()\n");
++
++	smp_ops = &xenon_smp_ops;
++
++	/* Mark threads which are still spinning in hold loops. */
++	if (cpu_has_feature(CPU_FTR_SMT)) {
++		for_each_present_cpu(i) {
++			if (i % 2 == 0)
++				/*
++				 * Even-numbered logical cpus correspond to
++				 * primary threads.
++				 */
++				cpu_set(i, of_spin_map);
++		}
++	} else {
++		of_spin_map = cpu_present_map;
++	}
++
++	cpu_clear(boot_cpuid, of_spin_map);
++
++	DBG(" <- smp_init_xenon()\n");
++}
+Index: linux-2.6.20/include/asm-powerpc/cputable.h
+===================================================================
+--- linux-2.6.20.orig/include/asm-powerpc/cputable.h	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/include/asm-powerpc/cputable.h	2007-03-07 19:01:21.000000000 +0100
+@@ -347,6 +347,12 @@
+ 	    CPU_FTR_HPTE_TABLE | CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_CTRL | \
+ 	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
+ 	    CPU_FTR_PAUSE_ZERO | CPU_FTR_CI_LARGE_PAGE | CPU_FTR_CELL_TB_BUG)
++#define CPU_FTRS_XENON ((CPU_FTR_SPLIT_ID_CACHE | CPU_FTR_USE_TB | \
++	    CPU_FTR_HPTE_TABLE | CPU_FTR_PPCAS_ARCH_V2 | \
++	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
++	    CPU_FTR_CTRL )&~CPU_FTR_16M_PAGE)
++// | CPU_FTR_PAUSE_ZERO | CPU_FTR_CI_LARGE_PAGE  /* we need to setup large pages before, and we don't do that yet */
++
+ #define CPU_FTRS_PA6T (CPU_FTR_SPLIT_ID_CACHE | CPU_FTR_USE_TB | \
+ 	    CPU_FTR_HPTE_TABLE | CPU_FTR_PPCAS_ARCH_V2 | \
+ 	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_CI_LARGE_PAGE | \
+
+--
+
+

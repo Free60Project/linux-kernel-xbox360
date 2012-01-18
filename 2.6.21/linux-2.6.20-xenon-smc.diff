@@ -1,0 +1,332 @@
+This adds lowlevel support for the "System Management Controller"
+on the Xenon southbridge, which controls power, the frontpanel leds, 
+infrared remote, tilt switch, AVIP detection, RTC and DVD tray control.
+
+It requires a userspace daemon.
+
+Signed-off-by: Felix Domke <tmbinc@elitedvb.net>
+
+---
+ drivers/char/Kconfig     |    6 +
+ drivers/char/Makefile    |    1 
+ drivers/char/xenon_smc.c |  280 +++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 287 insertions(+)
+
+Index: linux-2.6.20/drivers/char/Kconfig
+===================================================================
+--- linux-2.6.20.orig/drivers/char/Kconfig	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/drivers/char/Kconfig	2007-03-07 19:01:22.000000000 +0100
+@@ -350,6 +350,12 @@
+ 	  this case.  If you have never heard about all this, it's safe to
+ 	  say N.
+ 
++config XENON_SMC
++	bool "Xenon SMC"
++	depends on PPC_XENON
++	help
++	  SMC controller in the Xbox 360.
++
+ config STALLION
+ 	tristate "Stallion EasyIO or EC8/32 support"
+ 	depends on STALDRV && BROKEN_ON_SMP
+Index: linux-2.6.20/drivers/char/Makefile
+===================================================================
+--- linux-2.6.20.orig/drivers/char/Makefile	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/drivers/char/Makefile	2007-03-07 19:01:22.000000000 +0100
+@@ -55,6 +55,7 @@
+ obj-$(CONFIG_HVCS)		+= hvcs.o
+ obj-$(CONFIG_SGI_MBCS)		+= mbcs.o
+ obj-$(CONFIG_BRIQ_PANEL)	+= briq_panel.o
++obj-$(CONFIG_XENON_SMC)  += xenon_smc.o
+ 
+ obj-$(CONFIG_PRINTER)		+= lp.o
+ obj-$(CONFIG_TIPAR)		+= tipar.o
+Index: linux-2.6.20/drivers/char/xenon_smc.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.20/drivers/char/xenon_smc.c	2007-03-07 19:01:22.000000000 +0100
+@@ -0,0 +1,280 @@
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/pci.h>
++#include <linux/init.h>
++#include <linux/miscdevice.h>
++#include <asm/uaccess.h>
++
++#include <linux/delay.h>
++#include <linux/interrupt.h>
++#include <linux/device.h>
++
++#define DRV_NAME	"xenon_smc"
++#define DRV_VERSION	"0.1"
++
++struct xenon_smc
++{
++	void __iomem *base;
++	unsigned long is_active;
++	wait_queue_head_t wait;
++};
++
++static struct xenon_smc *first_smc;
++
++#define to_smc(pdev) dev_get_drvdata(&pdev->dev)
++
++static int get_smc(struct xenon_smc *ctx, u8 *msg);
++static void send_smc(struct xenon_smc *ctx, void *msg);
++static irqreturn_t xenon_smc_irq(int irq, void *dev_id);
++static ssize_t smc_write(struct file *file, const char __user *data,
++				size_t len, loff_t *ppos);
++static int smc_ioctl(struct inode *inode, struct file *file,
++				unsigned int cmd, unsigned long arg);
++static ssize_t smc_read(struct file *file, char __user *data,
++				size_t len, loff_t *ppos);
++static int smc_open(struct inode *inode, struct file *file);
++static int smc_release(struct inode *inode, struct file *file);
++static int xenon_smc_init_one (struct pci_dev *pdev, const struct pci_device_id *ent);
++static void __devexit xenon_smc_remove(struct pci_dev *pdev);
++
++static const struct pci_device_id xenon_smc_pci_tbl[] = {
++	{ PCI_VDEVICE(MICROSOFT, 0x580d), 0 },
++	{ }	/* terminate list */
++};
++
++static struct pci_driver xenon_smc_pci_driver = {
++	.name			= DRV_NAME,
++	.id_table		= xenon_smc_pci_tbl,
++	.probe			= xenon_smc_init_one,
++	.remove     = __devexit_p(xenon_smc_remove)
++};
++
++static const struct file_operations smc_fops = {
++	.owner =  THIS_MODULE,
++	.llseek = no_llseek,
++	.write =  smc_write,
++	.ioctl =  smc_ioctl,
++	.open =	  smc_open,
++	.read =   smc_read,
++	.release = smc_release,
++};
++
++static struct miscdevice smc_miscdev = {
++	.minor =  RTC_MINOR,
++	.name =   "smc",
++	.fops =	  &smc_fops,
++};
++
++MODULE_DESCRIPTION("Driver for Xenon Southbridge SMC");
++MODULE_LICENSE("GPL");
++MODULE_DEVICE_TABLE(pci, xenon_smc_pci_tbl);
++MODULE_VERSION(DRV_VERSION);
++
++static int get_smc(struct xenon_smc *ctx, u8 *msg)
++{
++	if (readl(ctx->base + 0x94) & 4)
++	{
++		u32 *message = (u32*)msg;
++		int i;
++		writel(4, ctx->base + 0x94);
++		for (i=0; i<4; ++i)
++			message[i] = __raw_readl(ctx->base + 0x90);
++		writel(0, ctx->base + 0x94);
++		return 1;
++	}
++	return 0;
++}
++
++static void send_smc(struct xenon_smc *ctx, void *msg)
++{
++	while (!(readl(ctx->base + 0x84) & 4));
++	writel(4, ctx->base + 0x84);
++	__raw_writel(*(u32*)(msg+0), ctx->base + 0x80);
++	__raw_writel(*(u32*)(msg+4), ctx->base + 0x80);
++	__raw_writel(*(u32*)(msg+8), ctx->base + 0x80);
++	__raw_writel(*(u32*)(msg+12), ctx->base + 0x80);
++	writel(0, ctx->base + 0x84);
++}
++
++static irqreturn_t xenon_smc_irq(int irq, void *dev_id)
++{
++	struct pci_dev *pdev = dev_id;
++	struct xenon_smc *ctx = to_smc(pdev);
++
++	unsigned int irqs = readl(ctx->base + 0x50) & 0x10000000;
++	if (irqs)
++		wake_up(&ctx->wait);
++
++	writel(irqs, ctx->base + 0x58); // ack irq
++
++	return IRQ_HANDLED;
++}
++
++static ssize_t smc_write(struct file *file, const char __user *data,
++			     size_t len, loff_t *ppos)
++{
++	unsigned char msg[16];
++	if (len != 16)
++		return -EINVAL;
++
++	if (copy_from_user(msg, data, 16))
++		return -EFAULT;
++
++	send_smc(first_smc, msg);
++
++	return 16;
++}
++
++static int smc_ioctl(struct inode *inode, struct file *file,
++			  unsigned int cmd, unsigned long arg)
++{
++	return -ENODEV;
++}
++
++static ssize_t smc_read(struct file *file, char __user *data,
++				size_t len, loff_t *ppos)
++{
++	struct xenon_smc *ctx = first_smc;
++	int ret;
++	u8 msg[0x10];
++
++	if (len != 16)
++		return -EINVAL;
++
++	if (!(readl(ctx->base + 0x94) & 4))
++	{
++		if (file->f_flags & O_NONBLOCK)
++			return -EAGAIN;
++
++		ret = wait_event_interruptible(ctx->wait, readl(ctx->base + 0x94) & 4);
++		if (ret < 0)
++			return ret;
++	}
++
++	if (get_smc(ctx, msg) == 0)
++		return -EAGAIN;
++
++	if (copy_to_user(data, msg, 0x10))
++		return -EFAULT;
++
++	return 0x10;
++}
++
++static int smc_open(struct inode *inode, struct file *file)
++{
++	if (test_and_set_bit(0, &first_smc->is_active))
++		return -EBUSY;
++
++	return nonseekable_open(inode, file);
++}
++
++static int smc_release(struct inode *inode, struct file *file)
++{
++	clear_bit(0, &first_smc->is_active);
++	return 0;
++}
++
++static void show_logo(struct xenon_smc *ctx)
++{
++	unsigned char msg[16] = {0x99, 0x01, 0x63, 0};
++	send_smc(ctx, msg);
++}
++
++static int xenon_smc_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
++{
++	static int printed_version;
++	int rc;
++	int pci_dev_busy = 0;
++	struct xenon_smc *ctx;
++	unsigned long mmio_start;
++
++	if (!printed_version++)
++		dev_printk(KERN_INFO, &pdev->dev, "version " DRV_VERSION "\n");
++
++	rc = pci_enable_device(pdev);
++	if (rc)
++		return rc;
++
++	ctx = kzalloc(sizeof(struct xenon_smc), GFP_KERNEL);
++	if (!ctx)
++		goto err_out_free;
++
++	dev_set_drvdata(&pdev->dev, ctx);
++
++	rc = pci_request_regions(pdev, DRV_NAME);
++	if (rc) {
++		pci_dev_busy = 1;
++		goto err_out;
++	}
++
++	pci_intx(pdev, 1);
++
++	printk(KERN_INFO "attached to xenon SMC\n");
++
++	rc = misc_register(&smc_miscdev);
++	if (rc != 0)
++	{
++		printk(KERN_ERR "xenonsmc: misc_register failed.\n");
++		goto err_out_regions;
++	}
++
++	mmio_start = pci_resource_start (pdev, 0);
++	ctx->base = ioremap(mmio_start, 0x100);
++
++	if (!first_smc)
++		first_smc = ctx;
++
++	init_waitqueue_head(&ctx->wait);
++
++	if (request_irq(pdev->irq, xenon_smc_irq, IRQF_SHARED, "xenonsmc", pdev))
++	{
++		printk(KERN_ERR "xenonsmc: request_irq failed\n");
++		goto err_out_ioremap;
++	}
++
++	show_logo(ctx);
++
++	return 0;
++
++err_out_ioremap:
++	iounmap(ctx->base);
++
++err_out_regions:
++	pci_release_regions(pdev);
++
++err_out_free:
++	kfree(ctx);
++
++err_out:
++	if (!pci_dev_busy)
++		pci_disable_device(pdev);
++	return rc;
++
++}
++
++static void __devexit xenon_smc_remove(struct pci_dev *pdev)
++{
++	struct xenon_smc *ctx = to_smc(pdev);
++
++	if (ctx == first_smc)
++		first_smc = 0;
++
++	misc_deregister(&smc_miscdev);
++	iounmap(ctx->base);
++
++	pci_release_regions(pdev);
++	pci_disable_device(pdev);
++}
++
++static int __init xenon_smc_init(void)
++{
++	return pci_register_driver(&xenon_smc_pci_driver);
++}
++
++static void __exit xenon_smc_exit(void)
++{
++	pci_unregister_driver(&xenon_smc_pci_driver);
++}
++
++module_init(xenon_smc_init);
++module_exit(xenon_smc_exit);
+
+--
+
+

@@ -1,0 +1,20 @@
+Signed-off-by: Felix Domke <tmbinc@elitedvb.net>
+
+---
+ include/linux/pci_ids.h |    2 ++
+ 1 file changed, 2 insertions(+)
+
+Index: linux-2.6.20/include/linux/pci_ids.h
+===================================================================
+--- linux-2.6.20.orig/include/linux/pci_ids.h	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/include/linux/pci_ids.h	2007-03-07 19:01:20.000000000 +0100
+@@ -2383,3 +2383,5 @@
+ 
+ #define PCI_VENDOR_ID_QUICKNET		0x15E2
+ #define PCI_DEVICE_ID_QUICKNET_XJ	0x0500
++
++#define PCI_VENDOR_ID_MICROSOFT		0x1414
+
+--
+
+

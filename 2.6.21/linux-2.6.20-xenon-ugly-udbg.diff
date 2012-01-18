@@ -1,0 +1,65 @@
+This adds support for a serial kernel output on the Xenon platform.
+
+Signed-off-by: Felix Domke <tmbinc@elitedvb.net>
+
+---
+ arch/powerpc/kernel/misc_64.S |    2 +-
+ arch/powerpc/kernel/udbg.c    |   14 ++++++++++++++
+ 2 files changed, 15 insertions(+), 1 deletion(-)
+
+Index: linux-2.6.20/arch/powerpc/kernel/misc_64.S
+===================================================================
+--- linux-2.6.20.orig/arch/powerpc/kernel/misc_64.S	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/arch/powerpc/kernel/misc_64.S	2007-03-07 19:01:21.000000000 +0100
+@@ -247,7 +247,7 @@
+ 	blr
+ 
+ 
+-#if defined(CONFIG_PPC_PMAC) || defined(CONFIG_PPC_MAPLE)
++#if defined(CONFIG_PPC_PMAC) || defined(CONFIG_PPC_MAPLE) || defined(CONFIG_PPC_XENON)
+ /*
+  * Do an IO access in real mode
+  */
+Index: linux-2.6.20/arch/powerpc/kernel/udbg.c
+===================================================================
+--- linux-2.6.20.orig/arch/powerpc/kernel/udbg.c	2007-03-07 19:01:12.000000000 +0100
++++ linux-2.6.20/arch/powerpc/kernel/udbg.c	2007-03-07 19:01:21.000000000 +0100
+@@ -25,6 +25,18 @@
+  * Early debugging facilities. You can enable _one_ of these via .config,
+  * if you do so your kernel _will not boot_ on anything else. Be careful.
+  */
++
++extern u8 real_readb(volatile u8 __iomem  *addr);
++extern void real_writeb(u8 data, volatile u8 __iomem *addr);
++
++void udbg_xenon_real_putc(char c)
++{
++	if (c == '\n')
++		udbg_xenon_real_putc('\r');
++	while (!(real_readb((void*)0x80000200ea001018ULL)&0x02));
++	real_writeb(c, (void*)0x80000200ea001014ULL);
++}
++
+ void __init udbg_early_init(void)
+ {
+ #if defined(CONFIG_PPC_EARLY_DEBUG_LPAR)
+@@ -46,6 +58,7 @@
+ 	/* For iSeries - hit Ctrl-x Ctrl-x to see the output */
+ 	udbg_init_iseries();
+ #endif
++	udbg_putc = udbg_xenon_real_putc;
+ }
+ 
+ /* udbg library, used by xmon et al */
+@@ -150,6 +163,7 @@
+ 		printk(KERN_INFO "early console immortal !\n");
+ 		return;
+ 	}
++	return;
+ 	unregister_console(&udbg_console);
+ 	early_console_initialized = 0;
+ }
+
+--
+
+
