@@ -1111,13 +1111,13 @@ diff -NurpP --minimal linux-3.10.7/arch/powerpc/platforms/xenon/smp.c linux-3.10
 +	return cpus_weight(CPU_MASK_ALL);
 +}
 +
-+static void __devinit smp_xenon_setup_cpu(int cpu)
++static void smp_xenon_setup_cpu(int cpu)
 +{
 +	if (cpu != boot_cpuid)
 +		xenon_init_irq_on_cpu(cpu);
 +}
 +
-+static int __devinit smp_xenon_kick_cpu(int nr)
++static int smp_xenon_kick_cpu(int nr)
 +{
 +	BUG_ON(nr < 0 || nr >= NR_CPUS);
 +
@@ -3902,7 +3902,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/Makefile linux-3.10.7-xe
  obj-$(CONFIG_SH_ETH) += renesas/
  obj-$(CONFIG_NET_VENDOR_RDC) += rdc/
  obj-$(CONFIG_S6GMAC) += s6gmac.o
-+obj-$(CONFIG_XENON_ENET) += xenon_net.o
++obj-$(CONFIG_XENON_ENET) += xenon/
  obj-$(CONFIG_NET_VENDOR_SEEQ) += seeq/
  obj-$(CONFIG_NET_VENDOR_SILAN) += silan/
  obj-$(CONFIG_NET_VENDOR_SIS) += sis/
@@ -3913,6 +3913,11 @@ diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/Kconfig linux-3.10
 +config XENON_ENET
 +       tristate "Xenon Fast Ethernet Adapter support"
 +       depends on PCI
+diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/Makefile linux-3.10.7-xenon/drivers/net/ethernet/xenon/Makefile
+--- linux-3.10.7/drivers/net/ethernet/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ linux-3.10.7-xenon/drivers/net/ethernet/xenon/Makefile	2013-08-19 13:07:45.007750454 +0200
+@@ -0,0 +1 @@
++obj-$(CONFIG_XENON_ENET) += xenon_net.o
 diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/xenon_net.c linux-3.10.7-xenon/drivers/net/ethernet/xenon/xenon_net.c
 --- linux-3.10.7/drivers/net/ethernet/xenon/xenon_net.c	1970-01-01 01:00:00.000000000 +0100
 +++ linux-3.10.7-xenon/drivers/net/ethernet/xenon/xenon_net.c	2013-08-19 12:14:03.719968588 +0200
@@ -3950,7 +3955,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/xenon_net.c linux-
 +
 +#define TX_TIMEOUT    (6*HZ)
 +
-+static char version[] __devinitdata =
++static char version[] =
 +KERN_INFO XENONNET_DRIVER_LOAD_MSG "\n"
 +KERN_INFO "\n";
 +
@@ -4417,7 +4422,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/xenon_net.c linux-
 +	.ndo_validate_addr	= eth_validate_addr,
 +};
 +
-+static int __devinit xenon_net_init_board (struct pci_dev *pdev,
++static int xenon_net_init_board (struct pci_dev *pdev,
 +					 struct net_device **dev_out,
 +					 void **ioaddr_out)
 +{
@@ -4492,7 +4497,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/xenon_net.c linux-
 +	free_netdev (dev);
 +	return rc;
 +}
-+static int __devinit xenon_net_init_one (struct pci_dev *pdev,
++static int xenon_net_init_one (struct pci_dev *pdev,
 +				       const struct pci_device_id *ent)
 +{
 +	struct net_device *dev = NULL;
@@ -4557,7 +4562,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/xenon_net.c linux-
 +}
 +
 +
-+static void __devexit xenon_net_remove_one (struct pci_dev *pdev)
++static void xenon_net_remove_one (struct pci_dev *pdev)
 +{
 +	struct net_device *dev = pci_get_drvdata (pdev);
 +	struct xenon_net_private *np;
@@ -4588,7 +4593,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/net/ethernet/xenon/xenon_net.c linux-
 +	.name		= MODNAME,
 +	.id_table	= xenon_net_pci_tbl,
 +	.probe		= xenon_net_init_one,
-+	.remove		= __devexit_p(xenon_net_remove_one),
++	.remove		= xenon_net_remove_one,
 +};
 +
 +static int __init xenon_net_init_module (void)
@@ -6061,7 +6066,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/xenon/smc-core.c linux-3.10.7-xenon/d
 +	return rc;
 +}
 +
-+static void __devexit xenon_smc_remove(struct pci_dev *pdev)
++static void xenon_smc_remove(struct pci_dev *pdev)
 +{
 +	smc.send = NULL;
 +	smc.reply = NULL;
@@ -6076,7 +6081,7 @@ diff -NurpP --minimal linux-3.10.7/drivers/xenon/smc-core.c linux-3.10.7-xenon/d
 +	.name			= DRV_NAME,
 +	.id_table		= xenon_smc_pci_tbl,
 +	.probe			= xenon_smc_init_one,
-+	.remove     = __devexit_p(xenon_smc_remove)
++	.remove			= xenon_smc_remove
 +};
 +
 +
@@ -10685,7 +10690,7 @@ diff -NurpP --minimal linux-3.10.7/sound/pci/snd-xenon.c linux-3.10.7-xenon/soun
 +	.pointer =      snd_xenon_pointer,
 +};
 +
-+static int __devinit snd_xenon_new_pcm(struct snd_xenon *chip)
++static int snd_xenon_new_pcm(struct snd_xenon *chip)
 +{
 +	struct snd_pcm *pcm;
 +	int err;
@@ -10752,7 +10757,7 @@ diff -NurpP --minimal linux-3.10.7/sound/pci/snd-xenon.c linux-3.10.7-xenon/soun
 +static int snd_xenon_dev_free(struct snd_device *device);
 +static int snd_xenon_free(struct snd_xenon *chip);
 +
-+static int __devinit snd_xenon_create(struct snd_card *card,
++static int snd_xenon_create(struct snd_card *card,
 +				       struct pci_dev *pci,
 +				       struct snd_xenon **rchip)
 +{
@@ -10866,7 +10871,7 @@ diff -NurpP --minimal linux-3.10.7/sound/pci/snd-xenon.c linux-3.10.7-xenon/soun
 +	return 0;
 +}
 +
-+static int __devinit snd_xenon_probe(struct pci_dev *pci,
++static int snd_xenon_probe(struct pci_dev *pci,
 +			     const struct pci_device_id *pci_id)
 +{
 +	static int dev;
@@ -10909,7 +10914,7 @@ diff -NurpP --minimal linux-3.10.7/sound/pci/snd-xenon.c linux-3.10.7-xenon/soun
 +	return 0;
 +}
 +
-+static void __devexit snd_xenon_remove(struct pci_dev *pci)
++static void snd_xenon_remove(struct pci_dev *pci)
 +{
 +	snd_card_free(pci_get_drvdata(pci));
 +	pci_set_drvdata(pci, NULL);
@@ -10919,7 +10924,7 @@ diff -NurpP --minimal linux-3.10.7/sound/pci/snd-xenon.c linux-3.10.7-xenon/soun
 +	.name = "snd-xenon",
 +	.id_table = snd_xenon_ids,
 +	.probe = snd_xenon_probe,
-+	.remove = __devexit_p(snd_xenon_remove),
++	.remove = snd_xenon_remove,
 +};
 +
 +static int __init alsa_card_xenon_init(void)
