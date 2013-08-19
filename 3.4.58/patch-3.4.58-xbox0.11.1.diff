@@ -3907,7 +3907,7 @@ diff -NurpP --minimal linux-3.4.58/drivers/net/ethernet/Makefile linux-3.4.58-xe
  obj-$(CONFIG_SH_ETH) += renesas/
  obj-$(CONFIG_NET_VENDOR_RDC) += rdc/
  obj-$(CONFIG_S6GMAC) += s6gmac.o
-+obj-$(CONFIG_XENON_ENET) += xenon_net.o
++obj-$(CONFIG_XENON_ENET) += xenon/
  obj-$(CONFIG_NET_VENDOR_SEEQ) += seeq/
  obj-$(CONFIG_NET_VENDOR_SILAN) += silan/
  obj-$(CONFIG_NET_VENDOR_SIS) += sis/
@@ -3918,6 +3918,11 @@ diff -NurpP --minimal linux-3.4.58/drivers/net/ethernet/xenon/Kconfig linux-3.4.
 +config XENON_ENET
 +       tristate "Xenon Fast Ethernet Adapter support"
 +       depends on PCI
+diff -NurpP --minimal linux-3.4.58/drivers/net/ethernet/xenon/Makefile linux-3.4.58-xenon/drivers/net/ethernet/xenon/Makefile
+--- linux-3.4.58/drivers/net/ethernet/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ linux-3.4.58-xenon/drivers/net/ethernet/xenon/Makefile	2013-08-19 13:58:09.447932917 +0200
+@@ -0,0 +1 @@
++obj-$(CONFIG_XENON_ENET) += xenon_net.o
 diff -NurpP --minimal linux-3.4.58/drivers/net/ethernet/xenon/xenon_net.c linux-3.4.58-xenon/drivers/net/ethernet/xenon/xenon_net.c
 --- linux-3.4.58/drivers/net/ethernet/xenon/xenon_net.c	1970-01-01 01:00:00.000000000 +0100
 +++ linux-3.4.58-xenon/drivers/net/ethernet/xenon/xenon_net.c	2013-08-19 11:22:59.724691151 +0200
