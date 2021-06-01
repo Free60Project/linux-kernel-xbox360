@@ -984,7 +984,7 @@ diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/pci.c linux-5.12-x
 +	pci_io_base = 0;
 +
 +	// pcibios_scan_phb(hose, dev);
-+	set_pci_dma_ops(&dma_virt_ops);
++	set_pci_dma_ops(&dma_iommu_ops);
 +}
 +
 +#else
@@ -1078,7 +1078,7 @@ diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/pci.c linux-5.12-x
 +	/* do we need that? */
 +	ppc_md.pci_dma_dev_setup = NULL;
 +	ppc_md.pci_dma_bus_setup = NULL;
-+	set_pci_dma_ops(&dma_direct_ops);
++	set_pci_dma_ops(&dma_iommu_ops);
 +}
 +
 +#endif
