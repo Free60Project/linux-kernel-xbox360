@@ -6505,7 +6505,7 @@ diff -NurpP --minimal linux-5.12/drivers/tty/serial/xenon_uart.c linux-5.12-xeno
 +	if (result)
 +		return result;
 +
-+	xenon_port.membase = ioremap_nocache(xenon_port.mapbase, 0x10);
++	xenon_port.membase = ioremap(xenon_port.mapbase, 0x10);
 +
 +	result = uart_add_one_port(&xenon_reg, &xenon_port);
 +	dprintk("Xenon uart_add_one_port() = %d", result);
@@ -6581,7 +6581,7 @@ diff -NurpP --minimal linux-5.12/drivers/tty/serial/xenon_uart.c linux-5.12-xeno
 +
 +static int __init xenon_serial_console_init(void)
 +{
-+	xenon_port.membase = ioremap_nocache(xenon_port.mapbase, 0x10);
++	xenon_port.membase = ioremap(xenon_port.mapbase, 0x10);
 +
 +	register_console(&xenon_console);
 +	return 0;
@@ -7617,7 +7617,7 @@ diff -NurpP --minimal linux-5.12/sound/pci/snd-xenon.c linux-5.12-xenon/sound/pc
 +void xenon_smc_send_message(unsigned char *msg)
 +{
 +
-+	void *base = ioremap_nocache(0x200ea001000, 0x1000);
++	void *base = ioremap(0x200ea001000, 0x1000);
 +
 +	while (!(readl(base + 0x84) & 4));
 +	writel(4, base + 0x84);
@@ -7808,7 +7808,7 @@ diff -NurpP --minimal linux-5.12/sound/pci/snd-xenon.c linux-5.12-xenon/sound/pc
 +	spin_lock_irq(&chip->lock);
 +
 +	device->dma_base_virt =
-+		ioremap_nocache(runtime->dma_addr, runtime->dma_bytes);
++		ioremap(runtime->dma_addr, runtime->dma_bytes);
 +
 +	memset(device->dma_base_virt, 0, runtime->dma_bytes);
 +	cache_flush(device->dma_base_virt, runtime->dma_bytes);
@@ -8046,7 +8046,7 @@ diff -NurpP --minimal linux-5.12/sound/pci/snd-xenon.c linux-5.12-xenon/sound/pc
 +	}
 +
 +	chip->iobase_phys = pci_resource_start(pci, 0);
-+	chip->iobase_virt = ioremap_nocache(chip->iobase_phys,
++	chip->iobase_virt = ioremap(chip->iobase_phys,
 +				      pci_resource_len(pci, 0));
 +
 +	printk("snd_xenon: iobase_phys=0x%lx iobase_virt=0x%llx\n", chip->iobase_phys, (unsigned long long)chip->iobase_virt);
