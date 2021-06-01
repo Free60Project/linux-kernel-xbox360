@@ -6051,21 +6051,21 @@ diff -NurpP --minimal linux-5.12/drivers/rtc/rtc-xenon.c linux-5.12-xenon/driver
 +
 +static int xenon_read_time(struct device *dev, struct rtc_time *tm)
 +{
-+	rtc_time_to_tm(xenon_get_rtc(), tm);
++	rtc_time64_to_tm(xenon_get_rtc(), tm);
 +	return 0;
 +}
 +
 +
 +static int xenon_set_time(struct device *dev, struct rtc_time *tm)
 +{
-+	unsigned long msec;
-+	int err;
++	unsigned long time = 0;
++	// int err;
 +
-+	err = rtc_tm_to_time(tm, &msec);
-+	if (err)
-+		return err;
++	time = rtc_tm_to_time64(tm);
++	// if (err)
++	//	return err;
 +
-+	return xenon_set_rtc(msec);
++	return xenon_set_rtc(time);
 +}
 +
 +static const struct rtc_class_ops xenon_rtc_ops = {
