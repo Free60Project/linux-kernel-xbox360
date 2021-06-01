@@ -1,7 +1,7 @@
-diff -NurpP --minimal linux-5.9/arch/powerpc/Kconfig.debug linux-5.9-xenon/arch/powerpc/Kconfig.debug
---- linux-5.9/arch/powerpc/Kconfig.debug	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/Kconfig.debug	2020-11-28 01:54:49.000000000 +0100
-@@ -256,6 +256,14 @@ config PPC_EARLY_DEBUG_PS3GELIC
+diff -NurpP --minimal linux-5.12/arch/powerpc/Kconfig.debug linux-5.12-xenon/arch/powerpc/Kconfig.debug
+--- linux-5.12/arch/powerpc/Kconfig.debug	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/Kconfig.debug	2021-06-01 21:43:02.547664369 +0200
+@@ -257,6 +257,14 @@ config PPC_EARLY_DEBUG_PS3GELIC
  	  Select this to enable early debugging for the PlayStation3 via
  	  UDP broadcasts sent out through the Ethernet port.
  
@@ -16,9 +16,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/Kconfig.debug linux-5.9-xenon/arch/
  config PPC_EARLY_DEBUG_OPAL_RAW
  	bool "OPAL raw console"
  	depends on HVC_OPAL
-diff -NurpP --minimal linux-5.9/arch/powerpc/boot/.gitignore linux-5.9-xenon/arch/powerpc/boot/.gitignore
---- linux-5.9/arch/powerpc/boot/.gitignore	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/boot/.gitignore	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/boot/.gitignore linux-5.12-xenon/arch/powerpc/boot/.gitignore
+--- linux-5.12/arch/powerpc/boot/.gitignore	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/boot/.gitignore	2021-06-01 21:43:02.547664369 +0200
 @@ -33,6 +33,7 @@ zImage.maple
  zImage.miboot
  zImage.pmac
@@ -27,10 +27,10 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/boot/.gitignore linux-5.9-xenon/arc
  zconf.h
  zlib.h
  zutil.h
-diff -NurpP --minimal linux-5.9/arch/powerpc/boot/Makefile linux-5.9-xenon/arch/powerpc/boot/Makefile
---- linux-5.9/arch/powerpc/boot/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/boot/Makefile	2020-11-28 01:54:49.000000000 +0100
-@@ -259,6 +259,7 @@ image-$(CONFIG_PPC_POWERNV)		+= zImage.p
+diff -NurpP --minimal linux-5.12/arch/powerpc/boot/Makefile linux-5.12-xenon/arch/powerpc/boot/Makefile
+--- linux-5.12/arch/powerpc/boot/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/boot/Makefile	2021-06-01 21:43:02.547664369 +0200
+@@ -264,6 +264,7 @@ image-$(CONFIG_PPC_POWERNV)		+= zImage.p
  image-$(CONFIG_PPC_MAPLE)		+= zImage.maple
  image-$(CONFIG_PPC_IBM_CELL_BLADE)	+= zImage.pseries
  image-$(CONFIG_PPC_PS3)			+= dtbImage.ps3
@@ -38,7 +38,7 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/boot/Makefile linux-5.9-xenon/arch/
  image-$(CONFIG_PPC_CHRP)		+= zImage.chrp
  image-$(CONFIG_PPC_EFIKA)		+= zImage.chrp
  image-$(CONFIG_PPC_PMAC)		+= zImage.pmac
-@@ -392,6 +393,11 @@ $(obj)/dtbImage.%: vmlinux $(wrapperbits
+@@ -399,6 +400,11 @@ $(obj)/dtbImage.%: vmlinux $(wrapperbits
  $(obj)/vmlinux.strip: vmlinux
  	$(STRIP) -s -R .comment $< -o $@
  
@@ -50,9 +50,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/boot/Makefile linux-5.9-xenon/arch/
  $(obj)/uImage: vmlinux $(wrapperbits) FORCE
  	$(call if_changed,wrap,uboot)
  
-diff -NurpP --minimal linux-5.9/arch/powerpc/boot/dts/xenon.dts linux-5.9-xenon/arch/powerpc/boot/dts/xenon.dts
---- linux-5.9/arch/powerpc/boot/dts/xenon.dts	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/boot/dts/xenon.dts	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/boot/dts/xenon.dts linux-5.12-xenon/arch/powerpc/boot/dts/xenon.dts
+--- linux-5.12/arch/powerpc/boot/dts/xenon.dts	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/boot/dts/xenon.dts	2021-06-01 21:43:02.547664369 +0200
 @@ -0,0 +1,131 @@
 +/*
 + * xenon.dts - Xbox360 Game Console device tree.
@@ -185,10 +185,10 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/boot/dts/xenon.dts linux-5.9-xenon/
 +		>;
 +	};
 +};
-diff -NurpP --minimal linux-5.9/arch/powerpc/include/asm/cputable.h linux-5.9-xenon/arch/powerpc/include/asm/cputable.h
---- linux-5.9/arch/powerpc/include/asm/cputable.h	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/include/asm/cputable.h	2020-11-28 01:54:49.000000000 +0100
-@@ -490,6 +490,10 @@ static inline void cpu_feature_keys_init
+diff -NurpP --minimal linux-5.12/arch/powerpc/include/asm/cputable.h linux-5.12-xenon/arch/powerpc/include/asm/cputable.h
+--- linux-5.12/arch/powerpc/include/asm/cputable.h	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/include/asm/cputable.h	2021-06-01 21:43:02.547664369 +0200
+@@ -456,6 +456,10 @@ static inline void cpu_feature_keys_init
  	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
  	    CPU_FTR_PAUSE_ZERO  | CPU_FTR_CELL_TB_BUG | CPU_FTR_CP_USE_DCBTZ | \
  	    CPU_FTR_UNALIGNED_LD_STD | CPU_FTR_DABRX)
@@ -199,7 +199,7 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/include/asm/cputable.h linux-5.9-xe
  #define CPU_FTRS_PA6T (CPU_FTR_LWSYNC | \
  	    CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_ALTIVEC_COMP | \
  	    CPU_FTR_PURR | CPU_FTR_REAL_LE | CPU_FTR_DABRX)
-@@ -552,6 +556,9 @@ enum {
+@@ -513,6 +517,9 @@ enum {
  #ifdef CONFIG_PPC_E500MC
  	    CPU_FTRS_E500MC | CPU_FTRS_E5500 | CPU_FTRS_E6500 |
  #endif
@@ -209,10 +209,10 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/include/asm/cputable.h linux-5.9-xe
  	    0,
  };
  #endif /* __powerpc64__ */
-diff -NurpP --minimal linux-5.9/arch/powerpc/include/asm/mmu.h linux-5.9-xenon/arch/powerpc/include/asm/mmu.h
---- linux-5.9/arch/powerpc/include/asm/mmu.h	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/include/asm/mmu.h	2020-11-28 01:54:49.000000000 +0100
-@@ -138,6 +138,8 @@
+diff -NurpP --minimal linux-5.12/arch/powerpc/include/asm/mmu.h linux-5.12-xenon/arch/powerpc/include/asm/mmu.h
+--- linux-5.12/arch/powerpc/include/asm/mmu.h	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/include/asm/mmu.h	2021-06-01 21:43:02.547664369 +0200
+@@ -141,6 +141,8 @@
  #define MMU_FTRS_POWER10	MMU_FTRS_POWER6
  #define MMU_FTRS_CELL		MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
  				MMU_FTR_CI_LARGE_PAGE
@@ -221,9 +221,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/include/asm/mmu.h linux-5.9-xenon/a
  #define MMU_FTRS_PA6T		MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
  				MMU_FTR_CI_LARGE_PAGE | MMU_FTR_NO_SLBIE_B
  #ifndef __ASSEMBLY__
-diff -NurpP --minimal linux-5.9/arch/powerpc/include/asm/udbg.h linux-5.9-xenon/arch/powerpc/include/asm/udbg.h
---- linux-5.9/arch/powerpc/include/asm/udbg.h	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/include/asm/udbg.h	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/include/asm/udbg.h linux-5.12-xenon/arch/powerpc/include/asm/udbg.h
+--- linux-5.12/arch/powerpc/include/asm/udbg.h	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/include/asm/udbg.h	2021-06-01 21:43:02.547664369 +0200
 @@ -53,6 +53,7 @@ extern void __init udbg_init_ehv_bc(void
  extern void __init udbg_init_ps3gelic(void);
  extern void __init udbg_init_debug_opal_raw(void);
@@ -232,11 +232,11 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/include/asm/udbg.h linux-5.9-xenon/
  
  #endif /* __KERNEL__ */
  #endif /* _ASM_POWERPC_UDBG_H */
-diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/cputable.c linux-5.9-xenon/arch/powerpc/kernel/cputable.c
---- linux-5.9/arch/powerpc/kernel/cputable.c	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/kernel/cputable.c	2020-11-28 01:54:49.000000000 +0100
-@@ -575,6 +575,18 @@ static struct cpu_spec __initdata cpu_sp
- 		.oprofile_type		= PPC_OPROFILE_CELL,
+diff -NurpP --minimal linux-5.12/arch/powerpc/kernel/cputable.c linux-5.12-xenon/arch/powerpc/kernel/cputable.c
+--- linux-5.12/arch/powerpc/kernel/cputable.c	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/kernel/cputable.c	2021-06-01 21:43:02.551664435 +0200
+@@ -539,6 +539,18 @@ static struct cpu_spec __initdata cpu_sp
+ 		.oprofile_cpu_type	= "ppc64/cell-be",
  		.platform		= "ppc-cell-be",
  	},
 +	{	/* Xenon */
@@ -254,9 +254,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/cputable.c linux-5.9-xenon/a
  	{	/* PA Semi PA6T */
  		.pvr_mask		= 0x7fff0000,
  		.pvr_value		= 0x00900000,
-diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/misc_64.S linux-5.9-xenon/arch/powerpc/kernel/misc_64.S
---- linux-5.9/arch/powerpc/kernel/misc_64.S	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/kernel/misc_64.S	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/kernel/misc_64.S linux-5.12-xenon/arch/powerpc/kernel/misc_64.S
+--- linux-5.12/arch/powerpc/kernel/misc_64.S	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/kernel/misc_64.S	2021-06-01 21:43:02.551664435 +0200
 @@ -95,7 +95,7 @@ _GLOBAL(rmci_off)
  	blr
  #endif /* CONFIG_PPC_EARLY_DEBUG_BOOTX */
@@ -266,10 +266,10 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/misc_64.S linux-5.9-xenon/ar
  
  /*
   * Do an IO access in real mode
-diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/prom.c linux-5.9-xenon/arch/powerpc/kernel/prom.c
---- linux-5.9/arch/powerpc/kernel/prom.c	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/kernel/prom.c	2020-11-28 01:54:49.000000000 +0100
-@@ -327,6 +327,7 @@ static int __init early_init_dt_scan_cpu
+diff -NurpP --minimal linux-5.12/arch/powerpc/kernel/prom.c linux-5.12-xenon/arch/powerpc/kernel/prom.c
+--- linux-5.12/arch/powerpc/kernel/prom.c	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/kernel/prom.c	2021-06-01 21:43:02.551664435 +0200
+@@ -326,6 +326,7 @@ static int __init early_init_dt_scan_cpu
  		intserv = of_get_flat_dt_prop(node, "reg", &len);
  
  	nthreads = len / sizeof(int);
@@ -277,9 +277,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/prom.c linux-5.9-xenon/arch/
  
  	/*
  	 * Now see if any of these threads match our boot cpu.
-diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/udbg.c linux-5.9-xenon/arch/powerpc/kernel/udbg.c
---- linux-5.9/arch/powerpc/kernel/udbg.c	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/kernel/udbg.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/kernel/udbg.c linux-5.12-xenon/arch/powerpc/kernel/udbg.c
+--- linux-5.12/arch/powerpc/kernel/udbg.c	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/kernel/udbg.c	2021-06-01 21:43:02.551664435 +0200
 @@ -67,6 +67,8 @@ void __init udbg_early_init(void)
  	udbg_init_debug_opal_raw();
  #elif defined(CONFIG_PPC_EARLY_DEBUG_OPAL_HVSI)
@@ -289,9 +289,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/kernel/udbg.c linux-5.9-xenon/arch/
  #endif
  
  #ifdef CONFIG_PPC_EARLY_DEBUG
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/Kconfig linux-5.9-xenon/arch/powerpc/platforms/Kconfig
---- linux-5.9/arch/powerpc/platforms/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/platforms/Kconfig	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/Kconfig linux-5.12-xenon/arch/powerpc/platforms/Kconfig
+--- linux-5.12/arch/powerpc/platforms/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/platforms/Kconfig	2021-06-01 21:43:02.551664435 +0200
 @@ -20,6 +20,7 @@ source "arch/powerpc/platforms/embedded6
  source "arch/powerpc/platforms/44x/Kconfig"
  source "arch/powerpc/platforms/40x/Kconfig"
@@ -300,9 +300,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/Kconfig linux-5.9-xenon/a
  
  config KVM_GUEST
  	bool "KVM Guest support"
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/Makefile linux-5.9-xenon/arch/powerpc/platforms/Makefile
---- linux-5.9/arch/powerpc/platforms/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/arch/powerpc/platforms/Makefile	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/Makefile linux-5.12-xenon/arch/powerpc/platforms/Makefile
+--- linux-5.12/arch/powerpc/platforms/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/arch/powerpc/platforms/Makefile	2021-06-01 21:43:02.551664435 +0200
 @@ -20,5 +20,6 @@ obj-$(CONFIG_PPC_MAPLE)		+= maple/
  obj-$(CONFIG_PPC_PASEMI)	+= pasemi/
  obj-$(CONFIG_PPC_CELL)		+= cell/
@@ -310,9 +310,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/Makefile linux-5.9-xenon/
 +obj-$(CONFIG_PPC_XENON)		+= xenon/
  obj-$(CONFIG_EMBEDDED6xx)	+= embedded6xx/
  obj-$(CONFIG_AMIGAONE)		+= amigaone/
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/Kconfig linux-5.9-xenon/arch/powerpc/platforms/xenon/Kconfig
---- linux-5.9/arch/powerpc/platforms/xenon/Kconfig	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/Kconfig	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/Kconfig linux-5.12-xenon/arch/powerpc/platforms/xenon/Kconfig
+--- linux-5.12/arch/powerpc/platforms/xenon/Kconfig	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/Kconfig	2021-06-01 21:43:02.551664435 +0200
 @@ -0,0 +1,18 @@
 +config PPC_XENON
 +	bool "Xenon"
@@ -333,17 +333,17 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/Kconfig linux-5.9-x
 +		This option enables early debugging over ethernet for the
 +		Xenon platform.
 \ No newline at end of file
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/Makefile linux-5.9-xenon/arch/powerpc/platforms/xenon/Makefile
---- linux-5.9/arch/powerpc/platforms/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/Makefile	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/Makefile linux-5.12-xenon/arch/powerpc/platforms/xenon/Makefile
+--- linux-5.12/arch/powerpc/platforms/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/Makefile	2021-06-01 21:43:02.551664435 +0200
 @@ -0,0 +1,4 @@
 +obj-y += setup.o interrupt.o pci.o time.o hardware.o
 +
 +obj-$(CONFIG_SMP) += smp.o
 +obj-$(CONFIG_XENON_UDBG) += xe_udbg.o
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/hardware.c linux-5.9-xenon/arch/powerpc/platforms/xenon/hardware.c
---- linux-5.9/arch/powerpc/platforms/xenon/hardware.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/hardware.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/hardware.c linux-5.12-xenon/arch/powerpc/platforms/xenon/hardware.c
+--- linux-5.12/arch/powerpc/platforms/xenon/hardware.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/hardware.c	2021-06-01 21:43:02.551664435 +0200
 @@ -0,0 +1,37 @@
 +/*
 + *  Xenon hardware related routines.
@@ -382,9 +382,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/hardware.c linux-5.
 +
 +module_init(xenon_hwmon_init);
 +
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/interrupt.c linux-5.9-xenon/arch/powerpc/platforms/xenon/interrupt.c
---- linux-5.9/arch/powerpc/platforms/xenon/interrupt.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/interrupt.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/interrupt.c linux-5.12-xenon/arch/powerpc/platforms/xenon/interrupt.c
+--- linux-5.12/arch/powerpc/platforms/xenon/interrupt.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/interrupt.c	2021-06-01 21:43:02.551664435 +0200
 @@ -0,0 +1,372 @@
 +/*
 + * Xenon interrupt controller,
@@ -758,9 +758,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/interrupt.c linux-5
 +
 +#endif
 +
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/interrupt.h linux-5.9-xenon/arch/powerpc/platforms/xenon/interrupt.h
---- linux-5.9/arch/powerpc/platforms/xenon/interrupt.h	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/interrupt.h	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/interrupt.h linux-5.12-xenon/arch/powerpc/platforms/xenon/interrupt.h
+--- linux-5.12/arch/powerpc/platforms/xenon/interrupt.h	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/interrupt.h	2021-06-01 21:43:02.551664435 +0200
 @@ -0,0 +1,10 @@
 +#ifndef XENON_INTERRUPT_H
 +#define XENON_INTERRUPT_H
@@ -772,9 +772,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/interrupt.h linux-5
 +
 +#endif /* ASM_XENON_PIC_H */
 +
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/pci.c linux-5.9-xenon/arch/powerpc/platforms/xenon/pci.c
---- linux-5.9/arch/powerpc/platforms/xenon/pci.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/pci.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/pci.c linux-5.12-xenon/arch/powerpc/platforms/xenon/pci.c
+--- linux-5.12/arch/powerpc/platforms/xenon/pci.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/pci.c	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,306 @@
 +/*
 + * Xenon PCI support
@@ -1082,9 +1082,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/pci.c linux-5.9-xen
 +}
 +
 +#endif
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/pci.h linux-5.9-xenon/arch/powerpc/platforms/xenon/pci.h
---- linux-5.9/arch/powerpc/platforms/xenon/pci.h	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/pci.h	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/pci.h linux-5.12-xenon/arch/powerpc/platforms/xenon/pci.h
+--- linux-5.12/arch/powerpc/platforms/xenon/pci.h	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/pci.h	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,7 @@
 +#ifndef XENON_PCI_H
 +#define XENON_PCI_H
@@ -1093,9 +1093,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/pci.h linux-5.9-xen
 +
 +#endif
 +
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/setup.c linux-5.9-xenon/arch/powerpc/platforms/xenon/setup.c
---- linux-5.9/arch/powerpc/platforms/xenon/setup.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/setup.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/setup.c linux-5.12-xenon/arch/powerpc/platforms/xenon/setup.c
+--- linux-5.12/arch/powerpc/platforms/xenon/setup.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/setup.c	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,170 @@
 +/*
 + *  linux/arch/powerpc/platforms/xenon/xenon_setup.c
@@ -1267,9 +1267,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/setup.c linux-5.9-x
 +#endif
 +};
 +
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/smp.c linux-5.9-xenon/arch/powerpc/platforms/xenon/smp.c
---- linux-5.9/arch/powerpc/platforms/xenon/smp.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/smp.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/smp.c linux-5.12-xenon/arch/powerpc/platforms/xenon/smp.c
+--- linux-5.12/arch/powerpc/platforms/xenon/smp.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/smp.c	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,81 @@
 +/*
 + * SMP support for Xenon machines.
@@ -1352,9 +1352,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/smp.c linux-5.9-xen
 +
 +	pr_debug(" <- smp_init_xenon()\n");
 +}
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/smp.h linux-5.9-xenon/arch/powerpc/platforms/xenon/smp.h
---- linux-5.9/arch/powerpc/platforms/xenon/smp.h	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/smp.h	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/smp.h linux-5.12-xenon/arch/powerpc/platforms/xenon/smp.h
+--- linux-5.12/arch/powerpc/platforms/xenon/smp.h	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/smp.h	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,9 @@
 +#ifndef XENON_SMP_H
 +#define XENON_SMP_H
@@ -1365,9 +1365,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/smp.h linux-5.9-xen
 +
 +#endif
 +
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/time.c linux-5.9-xenon/arch/powerpc/platforms/xenon/time.c
---- linux-5.9/arch/powerpc/platforms/xenon/time.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/time.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/time.c linux-5.12-xenon/arch/powerpc/platforms/xenon/time.c
+--- linux-5.12/arch/powerpc/platforms/xenon/time.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/time.c	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,36 @@
 +/*
 + *  Xenon time and rtc routines.
@@ -1405,9 +1405,9 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/time.c linux-5.9-xe
 +}
 +
 +module_init(xenon_rtc_init);
-diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/xe_udbg.c linux-5.9-xenon/arch/powerpc/platforms/xenon/xe_udbg.c
---- linux-5.9/arch/powerpc/platforms/xenon/xe_udbg.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/arch/powerpc/platforms/xenon/xe_udbg.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/arch/powerpc/platforms/xenon/xe_udbg.c linux-5.12-xenon/arch/powerpc/platforms/xenon/xe_udbg.c
+--- linux-5.12/arch/powerpc/platforms/xenon/xe_udbg.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/arch/powerpc/platforms/xenon/xe_udbg.c	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,162 @@
 +/*
 + * xe_udbg.c: Early debug console via framebuffer
@@ -1572,10 +1572,10 @@ diff -NurpP --minimal linux-5.9/arch/powerpc/platforms/xenon/xe_udbg.c linux-5.9
 +}
 +EXPORT_SYMBOL(udbg_shutdown_xenon);
 \ No newline at end of file
-diff -NurpP --minimal linux-5.9/drivers/Makefile linux-5.9-xenon/drivers/Makefile
---- linux-5.9/drivers/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/Makefile	2020-11-28 01:54:49.000000000 +0100
-@@ -141,6 +141,7 @@ endif
+diff -NurpP --minimal linux-5.12/drivers/Makefile linux-5.12-xenon/drivers/Makefile
+--- linux-5.12/drivers/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/Makefile	2021-06-01 21:43:02.555664501 +0200
+@@ -140,6 +140,7 @@ obj-y				+= clocksource/
  obj-$(CONFIG_DCA)		+= dca/
  obj-$(CONFIG_HID)		+= hid/
  obj-$(CONFIG_PPC_PS3)		+= ps3/
@@ -1583,9 +1583,9 @@ diff -NurpP --minimal linux-5.9/drivers/Makefile linux-5.9-xenon/drivers/Makefil
  obj-$(CONFIG_OF)		+= of/
  obj-$(CONFIG_SSB)		+= ssb/
  obj-$(CONFIG_BCMA)		+= bcma/
-diff -NurpP --minimal linux-5.9/drivers/ata/Kconfig linux-5.9-xenon/drivers/ata/Kconfig
---- linux-5.9/drivers/ata/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/ata/Kconfig	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/ata/Kconfig linux-5.12-xenon/drivers/ata/Kconfig
+--- linux-5.12/drivers/ata/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/ata/Kconfig	2021-06-01 21:43:02.555664501 +0200
 @@ -525,6 +525,14 @@ config SATA_SVW
  
  	  If unsure, say N.
@@ -1601,9 +1601,9 @@ diff -NurpP --minimal linux-5.9/drivers/ata/Kconfig linux-5.9-xenon/drivers/ata/
  config SATA_ULI
  	tristate "ULi Electronics SATA support"
  	depends on PCI
-diff -NurpP --minimal linux-5.9/drivers/ata/Makefile linux-5.9-xenon/drivers/ata/Makefile
---- linux-5.9/drivers/ata/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/ata/Makefile	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/ata/Makefile linux-5.12-xenon/drivers/ata/Makefile
+--- linux-5.12/drivers/ata/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/ata/Makefile	2021-06-01 21:43:02.555664501 +0200
 @@ -13,6 +13,7 @@ obj-$(CONFIG_SATA_INIC162X)	+= sata_inic
  obj-$(CONFIG_SATA_SIL24)	+= sata_sil24.o
  obj-$(CONFIG_SATA_DWC)		+= sata_dwc_460ex.o
@@ -1612,9 +1612,9 @@ diff -NurpP --minimal linux-5.9/drivers/ata/Makefile linux-5.9-xenon/drivers/ata
  obj-$(CONFIG_AHCI_BRCM)		+= ahci_brcm.o libahci.o libahci_platform.o
  obj-$(CONFIG_AHCI_CEVA)		+= ahci_ceva.o libahci.o libahci_platform.o
  obj-$(CONFIG_AHCI_DA850)	+= ahci_da850.o libahci.o libahci_platform.o
-diff -NurpP --minimal linux-5.9/drivers/ata/sata_xenon.c linux-5.9-xenon/drivers/ata/sata_xenon.c
---- linux-5.9/drivers/ata/sata_xenon.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/ata/sata_xenon.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/ata/sata_xenon.c linux-5.12-xenon/drivers/ata/sata_xenon.c
+--- linux-5.12/drivers/ata/sata_xenon.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/ata/sata_xenon.c	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,253 @@
 +/*
 + *  sata_xenon.c - SATA support for xenon southbridge
@@ -1869,9 +1869,9 @@ diff -NurpP --minimal linux-5.9/drivers/ata/sata_xenon.c linux-5.9-xenon/drivers
 +module_init(xenon_init);
 +module_exit(xenon_exit);
 +
-diff -NurpP --minimal linux-5.9/drivers/char/Kconfig linux-5.9-xenon/drivers/char/Kconfig
---- linux-5.9/drivers/char/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/char/Kconfig	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/char/Kconfig linux-5.12-xenon/drivers/char/Kconfig
+--- linux-5.12/drivers/char/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/char/Kconfig	2021-06-01 21:43:02.555664501 +0200
 @@ -7,6 +7,32 @@ menu "Character devices"
  
  source "drivers/tty/Kconfig"
@@ -1905,9 +1905,9 @@ diff -NurpP --minimal linux-5.9/drivers/char/Kconfig linux-5.9-xenon/drivers/cha
  config TTY_PRINTK
  	tristate "TTY driver to output user messages via printk"
  	depends on EXPERT && TTY
-diff -NurpP --minimal linux-5.9/drivers/char/Makefile linux-5.9-xenon/drivers/char/Makefile
---- linux-5.9/drivers/char/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/char/Makefile	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/char/Makefile linux-5.12-xenon/drivers/char/Makefile
+--- linux-5.12/drivers/char/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/char/Makefile	2021-06-01 21:43:02.555664501 +0200
 @@ -12,6 +12,10 @@ obj-$(CONFIG_RAW_DRIVER)	+= raw.o
  obj-$(CONFIG_MSPEC)		+= mspec.o
  obj-$(CONFIG_UV_MMTIMER)	+= uv_mmtimer.o
@@ -1919,9 +1919,9 @@ diff -NurpP --minimal linux-5.9/drivers/char/Makefile linux-5.9-xenon/drivers/ch
  
  obj-$(CONFIG_PRINTER)		+= lp.o
  
-diff -NurpP --minimal linux-5.9/drivers/char/xenon_ana.c linux-5.9-xenon/drivers/char/xenon_ana.c
---- linux-5.9/drivers/char/xenon_ana.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/char/xenon_ana.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/char/xenon_ana.c linux-5.12-xenon/drivers/char/xenon_ana.c
+--- linux-5.12/drivers/char/xenon_ana.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/char/xenon_ana.c	2021-06-01 21:43:02.555664501 +0200
 @@ -0,0 +1,210 @@
 +/*
 + *  Xenon (H)ana via SMC character driver.
@@ -2133,9 +2133,9 @@ diff -NurpP --minimal linux-5.9/drivers/char/xenon_ana.c linux-5.9-xenon/drivers
 +MODULE_LICENSE("GPL");
 +MODULE_VERSION(DRV_VERSION);
 +
-diff -NurpP --minimal linux-5.9/drivers/char/xenon_probe.c linux-5.9-xenon/drivers/char/xenon_probe.c
---- linux-5.9/drivers/char/xenon_probe.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/char/xenon_probe.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/char/xenon_probe.c linux-5.12-xenon/drivers/char/xenon_probe.c
+--- linux-5.12/drivers/char/xenon_probe.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/char/xenon_probe.c	2021-06-01 21:43:02.559664567 +0200
 @@ -0,0 +1,229 @@
 +/*
 + *  Xenon Memory Probe character driver.
@@ -2366,9 +2366,9 @@ diff -NurpP --minimal linux-5.9/drivers/char/xenon_probe.c linux-5.9-xenon/drive
 +MODULE_LICENSE("GPL");
 +MODULE_VERSION(DRV_VERSION);
 +
-diff -NurpP --minimal linux-5.9/drivers/char/xenon_smc.c linux-5.9-xenon/drivers/char/xenon_smc.c
---- linux-5.9/drivers/char/xenon_smc.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/char/xenon_smc.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/char/xenon_smc.c linux-5.12-xenon/drivers/char/xenon_smc.c
+--- linux-5.12/drivers/char/xenon_smc.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/char/xenon_smc.c	2021-06-01 21:43:02.559664567 +0200
 @@ -0,0 +1,122 @@
 +/*
 + *  Xenon SMC character driver.
@@ -2492,9 +2492,9 @@ diff -NurpP --minimal linux-5.9/drivers/char/xenon_smc.c linux-5.9-xenon/drivers
 +MODULE_LICENSE("GPL");
 +MODULE_VERSION(DRV_VERSION);
 +
-diff -NurpP --minimal linux-5.9/drivers/char/xenos_rb.c linux-5.9-xenon/drivers/char/xenos_rb.c
---- linux-5.9/drivers/char/xenos_rb.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/char/xenos_rb.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/char/xenos_rb.c linux-5.12-xenon/drivers/char/xenos_rb.c
+--- linux-5.12/drivers/char/xenos_rb.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/char/xenos_rb.c	2021-06-01 21:43:02.559664567 +0200
 @@ -0,0 +1,937 @@
 +/*
 + *  Xenos RingBuffer character driver.
@@ -3433,12 +3433,12 @@ diff -NurpP --minimal linux-5.9/drivers/char/xenos_rb.c linux-5.9-xenon/drivers/
 +MODULE_DESCRIPTION("Ring Buffer Driver for Xenos GPU");
 +MODULE_LICENSE("GPL");
 +MODULE_VERSION(DRV_VERSION);
-diff -NurpP --minimal linux-5.9/drivers/hwmon/Kconfig linux-5.9-xenon/drivers/hwmon/Kconfig
---- linux-5.9/drivers/hwmon/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/hwmon/Kconfig	2020-11-28 01:54:49.000000000 +0100
-@@ -2064,6 +2064,13 @@ config SENSORS_XGENE
- 	  If you say yes here you get support for the temperature
- 	  and power sensors for APM X-Gene SoC.
+diff -NurpP --minimal linux-5.12/drivers/hwmon/Kconfig linux-5.12-xenon/drivers/hwmon/Kconfig
+--- linux-5.12/drivers/hwmon/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/hwmon/Kconfig	2021-06-01 21:43:02.559664567 +0200
+@@ -2147,6 +2147,13 @@ config SENSORS_INTEL_M10_BMC_HWMON
+ 	  sensors monitor various telemetry data of different components on the
+ 	  card, e.g. board temperature, FPGA core temperature/voltage/current.
  
 +config SENSORS_XENON
 +	tristate "Xenon SMC"
@@ -3450,10 +3450,10 @@ diff -NurpP --minimal linux-5.9/drivers/hwmon/Kconfig linux-5.9-xenon/drivers/hw
  if ACPI
  
  comment "ACPI drivers"
-diff -NurpP --minimal linux-5.9/drivers/hwmon/Makefile linux-5.9-xenon/drivers/hwmon/Makefile
---- linux-5.9/drivers/hwmon/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/hwmon/Makefile	2020-11-28 01:54:49.000000000 +0100
-@@ -189,6 +189,7 @@ obj-$(CONFIG_SENSORS_W83L785TS)	+= w83l7
+diff -NurpP --minimal linux-5.12/drivers/hwmon/Makefile linux-5.12-xenon/drivers/hwmon/Makefile
+--- linux-5.12/drivers/hwmon/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/hwmon/Makefile	2021-06-01 21:43:02.559664567 +0200
+@@ -197,6 +197,7 @@ obj-$(CONFIG_SENSORS_W83L785TS)	+= w83l7
  obj-$(CONFIG_SENSORS_W83L786NG)	+= w83l786ng.o
  obj-$(CONFIG_SENSORS_WM831X)	+= wm831x-hwmon.o
  obj-$(CONFIG_SENSORS_WM8350)	+= wm8350-hwmon.o
@@ -3461,9 +3461,9 @@ diff -NurpP --minimal linux-5.9/drivers/hwmon/Makefile linux-5.9-xenon/drivers/h
  obj-$(CONFIG_SENSORS_XGENE)	+= xgene-hwmon.o
  
  obj-$(CONFIG_SENSORS_OCC)	+= occ/
-diff -NurpP --minimal linux-5.9/drivers/hwmon/xenon-hwmon.c linux-5.9-xenon/drivers/hwmon/xenon-hwmon.c
---- linux-5.9/drivers/hwmon/xenon-hwmon.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/hwmon/xenon-hwmon.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/hwmon/xenon-hwmon.c linux-5.12-xenon/drivers/hwmon/xenon-hwmon.c
+--- linux-5.12/drivers/hwmon/xenon-hwmon.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/hwmon/xenon-hwmon.c	2021-06-01 21:43:02.559664567 +0200
 @@ -0,0 +1,200 @@
 +/*
 + *  Xenon HW Monitor via SMC driver.
@@ -3665,9 +3665,9 @@ diff -NurpP --minimal linux-5.9/drivers/hwmon/xenon-hwmon.c linux-5.9-xenon/driv
 +MODULE_DESCRIPTION("Character Interface for Xenon (H)ana");
 +MODULE_LICENSE("GPL");
 +MODULE_VERSION(DRV_VERSION);
-diff -NurpP --minimal linux-5.9/drivers/input/joystick/xpad.c.new linux-5.9-xenon/drivers/input/joystick/xpad.c.new
---- linux-5.9/drivers/input/joystick/xpad.c.new	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/input/joystick/xpad.c.new	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/input/joystick/xpad.c.new linux-5.12-xenon/drivers/input/joystick/xpad.c.new
+--- linux-5.12/drivers/input/joystick/xpad.c.new	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/input/joystick/xpad.c.new	2021-06-01 21:43:02.559664567 +0200
 @@ -0,0 +1,1078 @@
 +/*
 + * Xbox gamepad driver with Xbox 360 wired/wireless support
@@ -4747,9 +4747,9 @@ diff -NurpP --minimal linux-5.9/drivers/input/joystick/xpad.c.new linux-5.9-xeno
 +MODULE_AUTHOR(DRIVER_AUTHOR);
 +MODULE_DESCRIPTION(DRIVER_DESC);
 +MODULE_LICENSE("GPL");
-diff -NurpP --minimal linux-5.9/drivers/input/joystick/xpad.h linux-5.9-xenon/drivers/input/joystick/xpad.h
---- linux-5.9/drivers/input/joystick/xpad.h	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/input/joystick/xpad.h	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/input/joystick/xpad.h linux-5.12-xenon/drivers/input/joystick/xpad.h
+--- linux-5.12/drivers/input/joystick/xpad.h	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/input/joystick/xpad.h	2021-06-01 21:43:02.559664567 +0200
 @@ -0,0 +1,399 @@
 +/*
 + * Xbox gamepad driver with Xbox 360 wired/wireless support
@@ -5150,20 +5150,20 @@ diff -NurpP --minimal linux-5.9/drivers/input/joystick/xpad.h linux-5.9-xenon/dr
 + * 2002-06-27 - 0.0.1 : first version, just said "XBOX HID controller"
 + *
 + */
-diff -NurpP --minimal linux-5.9/drivers/net/ethernet/Kconfig linux-5.9-xenon/drivers/net/ethernet/Kconfig
---- linux-5.9/drivers/net/ethernet/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/net/ethernet/Kconfig	2020-11-28 01:54:49.000000000 +0100
-@@ -181,5 +181,6 @@ source "drivers/net/ethernet/via/Kconfig
+diff -NurpP --minimal linux-5.12/drivers/net/ethernet/Kconfig linux-5.12-xenon/drivers/net/ethernet/Kconfig
+--- linux-5.12/drivers/net/ethernet/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/net/ethernet/Kconfig	2021-06-01 21:43:02.559664567 +0200
+@@ -180,5 +180,6 @@ source "drivers/net/ethernet/via/Kconfig
  source "drivers/net/ethernet/wiznet/Kconfig"
  source "drivers/net/ethernet/xilinx/Kconfig"
  source "drivers/net/ethernet/xircom/Kconfig"
 +source "drivers/net/ethernet/xenon/Kconfig"
  
  endif # ETHERNET
-diff -NurpP --minimal linux-5.9/drivers/net/ethernet/Makefile linux-5.9-xenon/drivers/net/ethernet/Makefile
---- linux-5.9/drivers/net/ethernet/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/net/ethernet/Makefile	2020-11-28 01:54:49.000000000 +0100
-@@ -87,6 +87,7 @@ obj-$(CONFIG_NET_VENDOR_STMICRO) += stmi
+diff -NurpP --minimal linux-5.12/drivers/net/ethernet/Makefile linux-5.12-xenon/drivers/net/ethernet/Makefile
+--- linux-5.12/drivers/net/ethernet/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/net/ethernet/Makefile	2021-06-01 21:43:02.563664633 +0200
+@@ -86,6 +86,7 @@ obj-$(CONFIG_NET_VENDOR_STMICRO) += stmi
  obj-$(CONFIG_NET_VENDOR_SUN) += sun/
  obj-$(CONFIG_NET_VENDOR_TEHUTI) += tehuti/
  obj-$(CONFIG_NET_VENDOR_TI) += ti/
@@ -5171,21 +5171,21 @@ diff -NurpP --minimal linux-5.9/drivers/net/ethernet/Makefile linux-5.9-xenon/dr
  obj-$(CONFIG_NET_VENDOR_TOSHIBA) += toshiba/
  obj-$(CONFIG_NET_VENDOR_TUNDRA) += tundra/
  obj-$(CONFIG_NET_VENDOR_VIA) += via/
-diff -NurpP --minimal linux-5.9/drivers/net/ethernet/xenon/Kconfig linux-5.9-xenon/drivers/net/ethernet/xenon/Kconfig
---- linux-5.9/drivers/net/ethernet/xenon/Kconfig	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/net/ethernet/xenon/Kconfig	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/net/ethernet/xenon/Kconfig linux-5.12-xenon/drivers/net/ethernet/xenon/Kconfig
+--- linux-5.12/drivers/net/ethernet/xenon/Kconfig	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/net/ethernet/xenon/Kconfig	2021-06-01 21:43:02.563664633 +0200
 @@ -0,0 +1,3 @@
 +config NET_XENON
 +       tristate "Xenon Fast Ethernet Adapter support"
 +       depends on PCI
-diff -NurpP --minimal linux-5.9/drivers/net/ethernet/xenon/Makefile linux-5.9-xenon/drivers/net/ethernet/xenon/Makefile
---- linux-5.9/drivers/net/ethernet/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/net/ethernet/xenon/Makefile	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/net/ethernet/xenon/Makefile linux-5.12-xenon/drivers/net/ethernet/xenon/Makefile
+--- linux-5.12/drivers/net/ethernet/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/net/ethernet/xenon/Makefile	2021-06-01 21:43:02.563664633 +0200
 @@ -0,0 +1 @@
 +obj-$(CONFIG_NET_XENON) += xenon_net.o
-diff -NurpP --minimal linux-5.9/drivers/net/ethernet/xenon/xenon_net.c linux-5.9-xenon/drivers/net/ethernet/xenon/xenon_net.c
---- linux-5.9/drivers/net/ethernet/xenon/xenon_net.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/net/ethernet/xenon/xenon_net.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/net/ethernet/xenon/xenon_net.c linux-5.12-xenon/drivers/net/ethernet/xenon/xenon_net.c
+--- linux-5.12/drivers/net/ethernet/xenon/xenon_net.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/net/ethernet/xenon/xenon_net.c	2021-06-01 21:43:02.563664633 +0200
 @@ -0,0 +1,768 @@
 +/*
 + * xenon_net.c: Driver for Xenon Southbridge Fast Ethernet
@@ -5955,10 +5955,10 @@ diff -NurpP --minimal linux-5.9/drivers/net/ethernet/xenon/xenon_net.c linux-5.9
 +MODULE_LICENSE("GPL");
 +MODULE_AUTHOR("Felix Domke <tmbinc@elitedvb.net>");
 +MODULE_DESCRIPTION("Xenon Southbridge Fast Ethernet Driver");
-diff -NurpP --minimal linux-5.9/drivers/rtc/Kconfig linux-5.9-xenon/drivers/rtc/Kconfig
---- linux-5.9/drivers/rtc/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/rtc/Kconfig	2020-11-28 01:54:49.000000000 +0100
-@@ -1631,6 +1631,16 @@ config RTC_DRV_PS3
+diff -NurpP --minimal linux-5.12/drivers/rtc/Kconfig linux-5.12-xenon/drivers/rtc/Kconfig
+--- linux-5.12/drivers/rtc/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/rtc/Kconfig	2021-06-01 21:50:43.731851260 +0200
+@@ -1620,6 +1620,17 @@ config RTC_DRV_PS3
  	  This driver can also be built as a module. If so, the module
  	  will be called rtc-ps3.
  
@@ -5972,22 +5972,23 @@ diff -NurpP --minimal linux-5.9/drivers/rtc/Kconfig linux-5.9-xenon/drivers/rtc/
 +	  This driver can also be built as a module. If so, the module
 +	  will be called rtc-xenon.
 +
- config RTC_DRV_COH901331
- 	tristate "ST-Ericsson COH 901 331 RTC"
- 	depends on ARCH_U300 || COMPILE_TEST
-diff -NurpP --minimal linux-5.9/drivers/rtc/Makefile linux-5.9-xenon/drivers/rtc/Makefile
---- linux-5.9/drivers/rtc/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/rtc/Makefile	2020-11-28 01:54:49.000000000 +0100
-@@ -180,5 +180,6 @@ obj-$(CONFIG_RTC_DRV_WILCO_EC)	+= rtc-wi
++
+ config RTC_DRV_STMP
+ 	tristate "Freescale STMP3xxx/i.MX23/i.MX28 RTC"
+ 	depends on ARCH_MXS || COMPILE_TEST
+diff -NurpP --minimal linux-5.12/drivers/rtc/Makefile linux-5.12-xenon/drivers/rtc/Makefile
+--- linux-5.12/drivers/rtc/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/rtc/Makefile	2021-06-01 21:43:02.563664633 +0200
+@@ -175,5 +175,6 @@ obj-$(CONFIG_RTC_DRV_WILCO_EC)	+= rtc-wi
  obj-$(CONFIG_RTC_DRV_WM831X)	+= rtc-wm831x.o
  obj-$(CONFIG_RTC_DRV_WM8350)	+= rtc-wm8350.o
  obj-$(CONFIG_RTC_DRV_X1205)	+= rtc-x1205.o
 +obj-$(CONFIG_RTC_DRV_XENON)	+= rtc-xenon.o
  obj-$(CONFIG_RTC_DRV_XGENE)	+= rtc-xgene.o
  obj-$(CONFIG_RTC_DRV_ZYNQMP)	+= rtc-zynqmp.o
-diff -NurpP --minimal linux-5.9/drivers/rtc/rtc-xenon.c linux-5.9-xenon/drivers/rtc/rtc-xenon.c
---- linux-5.9/drivers/rtc/rtc-xenon.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/rtc/rtc-xenon.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/rtc/rtc-xenon.c linux-5.12-xenon/drivers/rtc/rtc-xenon.c
+--- linux-5.12/drivers/rtc/rtc-xenon.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/rtc/rtc-xenon.c	2021-06-01 21:43:02.563664633 +0200
 @@ -0,0 +1,134 @@
 +/*
 + *  Xenon RTC via SMC driver.
@@ -6123,9 +6124,9 @@ diff -NurpP --minimal linux-5.9/drivers/rtc/rtc-xenon.c linux-5.9-xenon/drivers/
 +MODULE_LICENSE("GPL");
 +MODULE_VERSION(DRV_VERSION);
 +MODULE_ALIAS("platform:rtc-xenon");
-diff -NurpP --minimal linux-5.9/drivers/scsi/scsi_scan.c linux-5.9-xenon/drivers/scsi/scsi_scan.c
---- linux-5.9/drivers/scsi/scsi_scan.c	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/scsi/scsi_scan.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/scsi/scsi_scan.c linux-5.12-xenon/drivers/scsi/scsi_scan.c
+--- linux-5.12/drivers/scsi/scsi_scan.c	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/scsi/scsi_scan.c	2021-06-01 21:43:02.563664633 +0200
 @@ -586,6 +586,7 @@ static int scsi_probe_lun(struct scsi_de
  		memset(scsi_cmd, 0, 6);
  		scsi_cmd[0] = INQUIRY;
@@ -6134,10 +6135,10 @@ diff -NurpP --minimal linux-5.9/drivers/scsi/scsi_scan.c linux-5.9-xenon/drivers
  
  		memset(inq_result, 0, try_inquiry_len);
  
-diff -NurpP --minimal linux-5.9/drivers/tty/serial/Kconfig linux-5.9-xenon/drivers/tty/serial/Kconfig
---- linux-5.9/drivers/tty/serial/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/tty/serial/Kconfig	2020-11-28 01:54:49.000000000 +0100
-@@ -1579,6 +1579,24 @@ config SERIAL_MILBEAUT_USIO_CONSOLE
+diff -NurpP --minimal linux-5.12/drivers/tty/serial/Kconfig linux-5.12-xenon/drivers/tty/serial/Kconfig
+--- linux-5.12/drivers/tty/serial/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/tty/serial/Kconfig	2021-06-01 21:43:02.567664699 +0200
+@@ -1524,6 +1524,24 @@ config SERIAL_MILBEAUT_USIO_CONSOLE
  	  SoCs as the system console (the system console is the device which
  	  receives all kernel messages and warnings and which allows logins in
  	  single user mode).
@@ -6160,22 +6161,22 @@ diff -NurpP --minimal linux-5.9/drivers/tty/serial/Kconfig linux-5.9-xenon/drive
 +	  If you have enabled the serial port on the XBOX 360
 +	  you can make it the console by answering Y to this option.
  
- endmenu
- 
-diff -NurpP --minimal linux-5.9/drivers/tty/serial/Makefile linux-5.9-xenon/drivers/tty/serial/Makefile
---- linux-5.9/drivers/tty/serial/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/tty/serial/Makefile	2020-11-28 01:54:49.000000000 +0100
-@@ -67,6 +67,7 @@ obj-$(CONFIG_SERIAL_ALTERA_JTAGUART) +=
+ config SERIAL_LITEUART
+ 	tristate "LiteUART serial port support"
+diff -NurpP --minimal linux-5.12/drivers/tty/serial/Makefile linux-5.12-xenon/drivers/tty/serial/Makefile
+--- linux-5.12/drivers/tty/serial/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/tty/serial/Makefile	2021-06-01 21:43:02.567664699 +0200
+@@ -65,6 +65,7 @@ obj-$(CONFIG_SERIAL_GRLIB_GAISLER_APBUAR
+ obj-$(CONFIG_SERIAL_ALTERA_JTAGUART) += altera_jtaguart.o
  obj-$(CONFIG_SERIAL_VT8500) += vt8500_serial.o
- obj-$(CONFIG_SERIAL_IFX6X60)  	+= ifx6x60.o
  obj-$(CONFIG_SERIAL_PCH_UART)	+= pch_uart.o
 +obj-$(CONFIG_SERIAL_XENON)	+= xenon_uart.o
  obj-$(CONFIG_SERIAL_MXS_AUART) += mxs-auart.o
  obj-$(CONFIG_SERIAL_LANTIQ)	+= lantiq.o
  obj-$(CONFIG_SERIAL_XILINX_PS_UART) += xilinx_uartps.o
-diff -NurpP --minimal linux-5.9/drivers/tty/serial/xenon_uart.c linux-5.9-xenon/drivers/tty/serial/xenon_uart.c
---- linux-5.9/drivers/tty/serial/xenon_uart.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/tty/serial/xenon_uart.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/tty/serial/xenon_uart.c linux-5.12-xenon/drivers/tty/serial/xenon_uart.c
+--- linux-5.12/drivers/tty/serial/xenon_uart.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/tty/serial/xenon_uart.c	2021-06-01 21:43:02.567664699 +0200
 @@ -0,0 +1,418 @@
 +/* linux/drivers/serial/xenon.c
 + *
@@ -6595,9 +6596,9 @@ diff -NurpP --minimal linux-5.9/drivers/tty/serial/xenon_uart.c linux-5.9-xenon/
 +MODULE_DESCRIPTION("Xenon XBOX 360 Serial port driver");
 +MODULE_LICENSE("GPL v2");
 +// MODULE_ALIAS("platform:xenon-uart");
-diff -NurpP --minimal linux-5.9/drivers/video/fbdev/Kconfig linux-5.9-xenon/drivers/video/fbdev/Kconfig
---- linux-5.9/drivers/video/fbdev/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/video/fbdev/Kconfig	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/video/fbdev/Kconfig linux-5.12-xenon/drivers/video/fbdev/Kconfig
+--- linux-5.12/drivers/video/fbdev/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/video/fbdev/Kconfig	2021-06-01 21:43:02.567664699 +0200
 @@ -657,6 +657,15 @@ config FB_N411
  	  This enables support for the Apollo display controller in its
  	  Hecuba form using the n411 devkit.
@@ -6614,10 +6615,10 @@ diff -NurpP --minimal linux-5.9/drivers/video/fbdev/Kconfig linux-5.9-xenon/driv
  config FB_HGA
  	tristate "Hercules mono graphics support"
  	depends on FB && X86
-diff -NurpP --minimal linux-5.9/drivers/video/fbdev/Makefile linux-5.9-xenon/drivers/video/fbdev/Makefile
---- linux-5.9/drivers/video/fbdev/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/drivers/video/fbdev/Makefile	2020-11-28 01:54:49.000000000 +0100
-@@ -124,6 +124,7 @@ obj-$(CONFIG_FB_SM712)		  += sm712fb.o
+diff -NurpP --minimal linux-5.12/drivers/video/fbdev/Makefile linux-5.12-xenon/drivers/video/fbdev/Makefile
+--- linux-5.12/drivers/video/fbdev/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/drivers/video/fbdev/Makefile	2021-06-01 21:43:02.567664699 +0200
+@@ -123,6 +123,7 @@ obj-$(CONFIG_FB_SM712)		  += sm712fb.o
  obj-$(CONFIG_FB_UVESA)            += uvesafb.o
  obj-$(CONFIG_FB_VESA)             += vesafb.o
  obj-$(CONFIG_FB_EFI)              += efifb.o
@@ -6625,9 +6626,9 @@ diff -NurpP --minimal linux-5.9/drivers/video/fbdev/Makefile linux-5.9-xenon/dri
  obj-$(CONFIG_FB_VGA16)            += vga16fb.o
  obj-$(CONFIG_FB_OF)               += offb.o
  obj-$(CONFIG_FB_MX3)		  += mx3fb.o
-diff -NurpP --minimal linux-5.9/drivers/video/fbdev/xenosfb.c linux-5.9-xenon/drivers/video/fbdev/xenosfb.c
---- linux-5.9/drivers/video/fbdev/xenosfb.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/video/fbdev/xenosfb.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/video/fbdev/xenosfb.c linux-5.12-xenon/drivers/video/fbdev/xenosfb.c
+--- linux-5.12/drivers/video/fbdev/xenosfb.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/video/fbdev/xenosfb.c	2021-06-01 21:43:02.567664699 +0200
 @@ -0,0 +1,431 @@
 +/*
 + * framebuffer driver for Microsoft Xbox 360
@@ -7060,14 +7061,14 @@ diff -NurpP --minimal linux-5.9/drivers/video/fbdev/xenosfb.c linux-5.9-xenon/dr
 +module_init(xenosfb_init);
 +module_exit(xenosfb_exit);
 +MODULE_LICENSE("GPL");
-diff -NurpP --minimal linux-5.9/drivers/xenon/Makefile linux-5.9-xenon/drivers/xenon/Makefile
---- linux-5.9/drivers/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/xenon/Makefile	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/xenon/Makefile linux-5.12-xenon/drivers/xenon/Makefile
+--- linux-5.12/drivers/xenon/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/xenon/Makefile	2021-06-01 21:43:02.567664699 +0200
 @@ -0,0 +1 @@
 +obj-$(CONFIG_PPC_XENON) += smc-core.o
-diff -NurpP --minimal linux-5.9/drivers/xenon/smc-core.c linux-5.9-xenon/drivers/xenon/smc-core.c
---- linux-5.9/drivers/xenon/smc-core.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/drivers/xenon/smc-core.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/drivers/xenon/smc-core.c linux-5.12-xenon/drivers/xenon/smc-core.c
+--- linux-5.12/drivers/xenon/smc-core.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/drivers/xenon/smc-core.c	2021-06-01 21:43:02.567664699 +0200
 @@ -0,0 +1,339 @@
 +/*
 + *  Xenon SMC core.
@@ -7408,9 +7409,9 @@ diff -NurpP --minimal linux-5.9/drivers/xenon/smc-core.c linux-5.9-xenon/drivers
 +MODULE_VERSION(DRV_VERSION);
 +MODULE_DEVICE_TABLE(pci, xenon_smc_pci_tbl);
 +
-diff -NurpP --minimal linux-5.9/include/linux/fb.h linux-5.9-xenon/include/linux/fb.h
---- linux-5.9/include/linux/fb.h	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/include/linux/fb.h	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/include/linux/fb.h linux-5.12-xenon/include/linux/fb.h
+--- linux-5.12/include/linux/fb.h	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/include/linux/fb.h	2021-06-01 21:43:02.567664699 +0200
 @@ -685,6 +685,18 @@ static inline bool fb_be_math(struct fb_
  #endif /* CONFIG_FB_FOREIGN_ENDIAN */
  }
@@ -7430,10 +7431,10 @@ diff -NurpP --minimal linux-5.9/include/linux/fb.h linux-5.9-xenon/include/linux
  /* drivers/video/fbsysfs.c */
  extern struct fb_info *framebuffer_alloc(size_t size, struct device *dev);
  extern void framebuffer_release(struct fb_info *info);
-diff -NurpP --minimal linux-5.9/include/linux/pci_ids.h linux-5.9-xenon/include/linux/pci_ids.h
---- linux-5.9/include/linux/pci_ids.h	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/include/linux/pci_ids.h	2020-11-28 01:54:49.000000000 +0100
-@@ -2346,6 +2346,8 @@
+diff -NurpP --minimal linux-5.12/include/linux/pci_ids.h linux-5.12-xenon/include/linux/pci_ids.h
+--- linux-5.12/include/linux/pci_ids.h	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/include/linux/pci_ids.h	2021-06-01 21:43:02.567664699 +0200
+@@ -2349,6 +2349,8 @@
  #define PCI_DEVICE_ID_ADDIDATA_APCIe7500       0x7012
  #define PCI_DEVICE_ID_ADDIDATA_APCIe7800       0x7013
  
@@ -7442,12 +7443,12 @@ diff -NurpP --minimal linux-5.9/include/linux/pci_ids.h linux-5.9-xenon/include/
  #define PCI_VENDOR_ID_PDC		0x15e9
  
  #define PCI_VENDOR_ID_FARSITE           0x1619
-diff -NurpP --minimal linux-5.9/include/uapi/linux/serial_core.h linux-5.9-xenon/include/uapi/linux/serial_core.h
---- linux-5.9/include/uapi/linux/serial_core.h	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/include/uapi/linux/serial_core.h	2020-11-28 01:54:49.000000000 +0100
-@@ -213,6 +213,9 @@
- /* Energy Micro efm32 SoC */
- #define PORT_EFMUART   100
+diff -NurpP --minimal linux-5.12/include/uapi/linux/serial_core.h linux-5.12-xenon/include/uapi/linux/serial_core.h
+--- linux-5.12/include/uapi/linux/serial_core.h	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/include/uapi/linux/serial_core.h	2021-06-01 21:43:02.571664765 +0200
+@@ -208,6 +208,9 @@
+ /* Atheros AR933X SoC */
+ #define PORT_AR933X	99
  
 +/* Xenon XBOX 360 Southbridge */
 +#define PORT_XENON     91
@@ -7455,9 +7456,9 @@ diff -NurpP --minimal linux-5.9/include/uapi/linux/serial_core.h linux-5.9-xenon
  /* ARC (Synopsys) on-chip UART */
  #define PORT_ARC       101
  
-diff -NurpP --minimal linux-5.9/lib/Kconfig.debug linux-5.9-xenon/lib/Kconfig.debug
---- linux-5.9/lib/Kconfig.debug	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/lib/Kconfig.debug	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/lib/Kconfig.debug linux-5.12-xenon/lib/Kconfig.debug
+--- linux-5.12/lib/Kconfig.debug	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/lib/Kconfig.debug	2021-06-01 21:43:02.571664765 +0200
 @@ -78,7 +78,7 @@ config MESSAGE_LOGLEVEL_DEFAULT
  
  config BOOT_PRINTK_DELAY
@@ -7467,9 +7468,9 @@ diff -NurpP --minimal linux-5.9/lib/Kconfig.debug linux-5.9-xenon/lib/Kconfig.de
  	help
  	  This build option allows you to read kernel boot messages
  	  by inserting a short delay after each one.  The delay is
-diff -NurpP --minimal linux-5.9/sound/pci/Kconfig linux-5.9-xenon/sound/pci/Kconfig
---- linux-5.9/sound/pci/Kconfig	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/sound/pci/Kconfig	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/sound/pci/Kconfig linux-5.12-xenon/sound/pci/Kconfig
+--- linux-5.12/sound/pci/Kconfig	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/sound/pci/Kconfig	2021-06-01 21:44:50.377481452 +0200
 @@ -908,6 +908,15 @@ config SND_YMFPCI
  	  To compile this driver as a module, choose M here: the module
  	  will be called snd-ymfpci.
@@ -7486,9 +7487,9 @@ diff -NurpP --minimal linux-5.9/sound/pci/Kconfig linux-5.9-xenon/sound/pci/Kcon
  endif	# SND_PCI
  
  source "sound/pci/hda/Kconfig"
-diff -NurpP --minimal linux-5.9/sound/pci/Makefile linux-5.9-xenon/sound/pci/Makefile
---- linux-5.9/sound/pci/Makefile	2020-10-11 23:15:50.000000000 +0200
-+++ linux-5.9-xenon/sound/pci/Makefile	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/sound/pci/Makefile linux-5.12-xenon/sound/pci/Makefile
+--- linux-5.12/sound/pci/Makefile	2021-04-25 22:49:08.000000000 +0200
++++ linux-5.12-xenon/sound/pci/Makefile	2021-06-01 21:44:50.377481452 +0200
 @@ -54,6 +54,7 @@ obj-$(CONFIG_SND_SIS7019) += snd-sis7019
  obj-$(CONFIG_SND_SONICVIBES) += snd-sonicvibes.o
  obj-$(CONFIG_SND_VIA82XX) += snd-via82xx.o
@@ -7497,9 +7498,9 @@ diff -NurpP --minimal linux-5.9/sound/pci/Makefile linux-5.9-xenon/sound/pci/Mak
  
  obj-$(CONFIG_SND) += \
  	ac97/ \
-diff -NurpP --minimal linux-5.9/sound/pci/snd-xenon.c linux-5.9-xenon/sound/pci/snd-xenon.c
---- linux-5.9/sound/pci/snd-xenon.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-5.9-xenon/sound/pci/snd-xenon.c	2020-11-28 01:54:49.000000000 +0100
+diff -NurpP --minimal linux-5.12/sound/pci/snd-xenon.c linux-5.12-xenon/sound/pci/snd-xenon.c
+--- linux-5.12/sound/pci/snd-xenon.c	1970-01-01 01:00:00.000000000 +0100
++++ linux-5.12-xenon/sound/pci/snd-xenon.c	2021-06-01 21:44:50.377481452 +0200
 @@ -0,0 +1,687 @@
 +/*
 + *  xenon_snd.c - driver for XBOX 360 soundcard.
