@@ -1,0 +1,549 @@
+diff --git a/arch/powerpc/Kconfig.debug b/arch/powerpc/Kconfig.debug
+index 192f0ed00..0e10ad9ef 100644
+--- a/arch/powerpc/Kconfig.debug
++++ b/arch/powerpc/Kconfig.debug
+@@ -262,6 +262,14 @@ config PPC_EARLY_DEBUG_PS3GELIC
+ 	  Select this to enable early debugging for the PlayStation3 via
+ 	  UDP broadcasts sent out through the Ethernet port.
+ 
++config PPC_EARLY_DEBUG_XENON
++	bool "Early debugging through Xenos framebuffer"
++	depends on PPC_XENON
++	select XENON_UDBG
++	help
++	  Select this to enable early debugging for the Xenon via
++	  early framebuffer support.
++
+ config PPC_EARLY_DEBUG_OPAL_RAW
+ 	bool "OPAL raw console"
+ 	depends on HVC_OPAL
+diff --git a/arch/powerpc/boot/.gitignore b/arch/powerpc/boot/.gitignore
+index 1eee61b82..9b80e9634 100644
+--- a/arch/powerpc/boot/.gitignore
++++ b/arch/powerpc/boot/.gitignore
+@@ -33,6 +33,7 @@ zImage.maple
+ zImage.miboot
+ zImage.pmac
+ zImage.pseries
++zImage.xenon
+ zconf.h
+ zlib.h
+ zutil.h
+diff --git a/arch/powerpc/boot/Makefile b/arch/powerpc/boot/Makefile
+index 089ee3ea5..5d428f563 100644
+--- a/arch/powerpc/boot/Makefile
++++ b/arch/powerpc/boot/Makefile
+@@ -266,6 +266,7 @@ image-$(CONFIG_PPC_POWERNV)		+= zImage.pseries
+ image-$(CONFIG_PPC_MAPLE)		+= zImage.maple
+ image-$(CONFIG_PPC_IBM_CELL_BLADE)	+= zImage.pseries
+ image-$(CONFIG_PPC_PS3)			+= dtbImage.ps3
++image-$(CONFIG_PPC_XENON)		+= zImage.xenon
+ image-$(CONFIG_PPC_CHRP)		+= zImage.chrp
+ image-$(CONFIG_PPC_EFIKA)		+= zImage.chrp
+ image-$(CONFIG_PPC_PMAC)		+= zImage.pmac
+@@ -402,6 +403,11 @@ $(obj)/dtbImage.%: vmlinux $(wrapperbits) $(obj)/dts/%.dtb FORCE
+ $(obj)/vmlinux.strip: vmlinux
+ 	$(STRIP) -s -R .comment $< -o $@
+ 
++$(obj)/zImage.xenon: $(obj)/vmlinux.strip
++	@$(OBJCOPY) -O elf32-powerpc $< $@
++	@test -e /mnt/e/Misc/tftpd64 && \
++	   cp -f $@ /mnt/e/Misc/tftpd64/vmlinux || true
++
+ $(obj)/uImage: vmlinux $(wrapperbits) FORCE
+ 	$(call if_changed,wrap,uboot)
+ 
+diff --git a/arch/powerpc/include/asm/cputable.h b/arch/powerpc/include/asm/cputable.h
+index e85c84921..62e32a38a 100644
+--- a/arch/powerpc/include/asm/cputable.h
++++ b/arch/powerpc/include/asm/cputable.h
+@@ -456,6 +456,10 @@ static inline void cpu_feature_keys_init(void) { }
+ 	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
+ 	    CPU_FTR_PAUSE_ZERO  | CPU_FTR_CELL_TB_BUG | CPU_FTR_CP_USE_DCBTZ | \
+ 	    CPU_FTR_UNALIGNED_LD_STD | CPU_FTR_DABRX)
++#define CPU_FTRS_XENON (CPU_FTR_LWSYNC | \
++	    CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_CTRL | \
++	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
++	    CPU_FTR_CELL_TB_BUG )
+ #define CPU_FTRS_PA6T (CPU_FTR_LWSYNC | \
+ 	    CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_ALTIVEC_COMP | \
+ 	    CPU_FTR_PURR | CPU_FTR_REAL_LE | CPU_FTR_DABRX)
+@@ -512,6 +516,9 @@ enum {
+ #endif
+ #ifdef CONFIG_PPC_E500MC
+ 	    CPU_FTRS_E500MC | CPU_FTRS_E5500 | CPU_FTRS_E6500 |
++#endif
++#ifdef CONFIG_PPC_XENON
++		CPU_FTRS_XENON |
+ #endif
+ 	    0,
+ };
+diff --git a/arch/powerpc/include/asm/mmu.h b/arch/powerpc/include/asm/mmu.h
+index 8abe8e42e..bd138c2b5 100644
+--- a/arch/powerpc/include/asm/mmu.h
++++ b/arch/powerpc/include/asm/mmu.h
+@@ -141,6 +141,8 @@
+ #define MMU_FTRS_POWER10	MMU_FTRS_POWER6
+ #define MMU_FTRS_CELL		MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
+ 				MMU_FTR_CI_LARGE_PAGE
++#define MMU_FTRS_XENON		MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
++				MMU_FTR_CI_LARGE_PAGE
+ #define MMU_FTRS_PA6T		MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
+ 				MMU_FTR_CI_LARGE_PAGE | MMU_FTR_NO_SLBIE_B
+ #ifndef __ASSEMBLY__
+diff --git a/arch/powerpc/include/asm/udbg.h b/arch/powerpc/include/asm/udbg.h
+index 0ea9e70ed..29ab136cc 100644
+--- a/arch/powerpc/include/asm/udbg.h
++++ b/arch/powerpc/include/asm/udbg.h
+@@ -53,6 +53,7 @@ extern void __init udbg_init_ehv_bc(void);
+ extern void __init udbg_init_ps3gelic(void);
+ extern void __init udbg_init_debug_opal_raw(void);
+ extern void __init udbg_init_debug_opal_hvsi(void);
++extern void __init udbg_init_xenon(void);
+ 
+ #endif /* __KERNEL__ */
+ #endif /* _ASM_POWERPC_UDBG_H */
+diff --git a/arch/powerpc/kernel/cputable.c b/arch/powerpc/kernel/cputable.c
+index ae0fdef0a..e82fb64ec 100644
+--- a/arch/powerpc/kernel/cputable.c
++++ b/arch/powerpc/kernel/cputable.c
+@@ -539,6 +539,18 @@ static struct cpu_spec __initdata cpu_specs[] = {
+ 		.oprofile_cpu_type	= "ppc64/cell-be",
+ 		.platform		= "ppc-cell-be",
+ 	},
++	{	/* Xenon */
++		.pvr_mask		= 0xffff0000,
++		.pvr_value		= 0x00710000,
++		.cpu_name		= "Xenon",
++		.cpu_features		= CPU_FTRS_XENON,
++		.cpu_user_features	= COMMON_USER_PPC64 | PPC_FEATURE_HAS_ALTIVEC_COMP |
++			PPC_FEATURE_SMT,
++		.mmu_features		= MMU_FTRS_XENON,
++		.icache_bsize		= 128,
++		.dcache_bsize		= 128,
++		.platform		= "xenon",
++	},
+ 	{	/* PA Semi PA6T */
+ 		.pvr_mask		= 0x7fff0000,
+ 		.pvr_value		= 0x00900000,
+diff --git a/arch/powerpc/kernel/misc_64.S b/arch/powerpc/kernel/misc_64.S
+index d38a019b3..ca6a2cacf 100644
+--- a/arch/powerpc/kernel/misc_64.S
++++ b/arch/powerpc/kernel/misc_64.S
+@@ -73,7 +73,7 @@ _GLOBAL(rmci_off)
+ 	blr
+ #endif /* CONFIG_PPC_EARLY_DEBUG_BOOTX */
+ 
+-#if defined(CONFIG_PPC_PMAC) || defined(CONFIG_PPC_MAPLE)
++#if defined(CONFIG_PPC_PMAC) || defined(CONFIG_PPC_MAPLE) || defined(CONFIG_PPC_XENON)
+ 
+ /*
+  * Do an IO access in real mode
+diff --git a/arch/powerpc/kernel/prom.c b/arch/powerpc/kernel/prom.c
+index 2e67588f6..9f634782f 100644
+--- a/arch/powerpc/kernel/prom.c
++++ b/arch/powerpc/kernel/prom.c
+@@ -327,6 +327,7 @@ static int __init early_init_dt_scan_cpus(unsigned long node,
+ 		intserv = of_get_flat_dt_prop(node, "reg", &len);
+ 
+ 	nthreads = len / sizeof(int);
++	DBG("%s with %d threads \"%s\" v%d", type, nthreads, uname, fdt_version(initial_boot_params));
+ 
+ 	/*
+ 	 * Now see if any of these threads match our boot cpu.
+diff --git a/arch/powerpc/kernel/udbg.c b/arch/powerpc/kernel/udbg.c
+index b1544b2f6..08a584df1 100644
+--- a/arch/powerpc/kernel/udbg.c
++++ b/arch/powerpc/kernel/udbg.c
+@@ -67,6 +67,8 @@ void __init udbg_early_init(void)
+ 	udbg_init_debug_opal_raw();
+ #elif defined(CONFIG_PPC_EARLY_DEBUG_OPAL_HVSI)
+ 	udbg_init_debug_opal_hvsi();
++#elif defined(CONFIG_PPC_EARLY_DEBUG_XENON)
++	udbg_init_xenon();
+ #endif
+ 
+ #ifdef CONFIG_PPC_EARLY_DEBUG
+diff --git a/arch/powerpc/platforms/Kconfig b/arch/powerpc/platforms/Kconfig
+index e02d29a9d..54b774774 100644
+--- a/arch/powerpc/platforms/Kconfig
++++ b/arch/powerpc/platforms/Kconfig
+@@ -22,6 +22,7 @@ source "arch/powerpc/platforms/40x/Kconfig"
+ source "arch/powerpc/platforms/amigaone/Kconfig"
+ source "arch/powerpc/platforms/book3s/Kconfig"
+ source "arch/powerpc/platforms/microwatt/Kconfig"
++source "arch/powerpc/platforms/xenon/Kconfig"
+ 
+ config KVM_GUEST
+ 	bool "KVM Guest support"
+diff --git a/arch/powerpc/platforms/Makefile b/arch/powerpc/platforms/Makefile
+index 94470fb27..23d341ab4 100644
+--- a/arch/powerpc/platforms/Makefile
++++ b/arch/powerpc/platforms/Makefile
+@@ -20,6 +20,7 @@ obj-$(CONFIG_PPC_MAPLE)		+= maple/
+ obj-$(CONFIG_PPC_PASEMI)	+= pasemi/
+ obj-$(CONFIG_PPC_CELL)		+= cell/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
++obj-$(CONFIG_PPC_XENON)		+= xenon/
+ obj-$(CONFIG_EMBEDDED6xx)	+= embedded6xx/
+ obj-$(CONFIG_AMIGAONE)		+= amigaone/
+ obj-$(CONFIG_PPC_BOOK3S)	+= book3s/
+diff --git a/drivers/Makefile b/drivers/Makefile
+index a110338c8..feccef1d1 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -138,6 +138,7 @@ obj-y				+= clocksource/
+ obj-$(CONFIG_DCA)		+= dca/
+ obj-$(CONFIG_HID)		+= hid/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
++obj-$(CONFIG_PPC_XENON)		+= xenon/
+ obj-$(CONFIG_OF)		+= of/
+ obj-$(CONFIG_SSB)		+= ssb/
+ obj-$(CONFIG_BCMA)		+= bcma/
+diff --git a/drivers/ata/Kconfig b/drivers/ata/Kconfig
+index a7da8ea7b..656ff2943 100644
+--- a/drivers/ata/Kconfig
++++ b/drivers/ata/Kconfig
+@@ -525,6 +525,14 @@ config SATA_SVW
+ 
+ 	  If unsure, say N.
+ 
++config SATA_XENON
++	tristate "Xenon SATA support"
++	depends on PCI
++	help
++	  This option enables support for Xenon southbridge.
++
++	  If unsure, say N.
++
+ config SATA_ULI
+ 	tristate "ULi Electronics SATA support"
+ 	depends on PCI
+diff --git a/drivers/ata/Makefile b/drivers/ata/Makefile
+index b8aebfb14..95525b108 100644
+--- a/drivers/ata/Makefile
++++ b/drivers/ata/Makefile
+@@ -13,6 +13,7 @@ obj-$(CONFIG_SATA_INIC162X)	+= sata_inic162x.o
+ obj-$(CONFIG_SATA_SIL24)	+= sata_sil24.o
+ obj-$(CONFIG_SATA_DWC)		+= sata_dwc_460ex.o
+ obj-$(CONFIG_SATA_HIGHBANK)	+= sata_highbank.o libahci.o
++obj-$(CONFIG_SATA_XENON)    += sata_xenon.o
+ obj-$(CONFIG_AHCI_BRCM)		+= ahci_brcm.o libahci.o libahci_platform.o
+ obj-$(CONFIG_AHCI_CEVA)		+= ahci_ceva.o libahci.o libahci_platform.o
+ obj-$(CONFIG_AHCI_DA850)	+= ahci_da850.o libahci.o libahci_platform.o
+diff --git a/drivers/char/Kconfig b/drivers/char/Kconfig
+index d454428f4..f767d7e6b 100644
+--- a/drivers/char/Kconfig
++++ b/drivers/char/Kconfig
+@@ -7,6 +7,32 @@ menu "Character devices"
+ 
+ source "drivers/tty/Kconfig"
+ 
++config XENON_SMC
++	tristate "Xenon System Management Controller (SMC)"
++	depends on PPC_XENON
++	help
++	  Character interface to the System Management controller in the
++	  Xbox 360. Allows to send arbitrary SMC commands and receive
++	  SMC replies.
++
++config XENON_ANA
++	tristate "Xenon (H)ana Character Device"
++	depends on PPC_XENON
++	help
++	  Character interface to the (H)ana chip on the Xbox 360.
++
++config XENON_PROBE
++	tristate "Xenon Memory Probe Device"
++	depends on PPC_XENON && EXPERIMENTAL
++	help
++	  Character interface to do memory probing on the Xbox 360.
++
++config XENOS_RB
++	tristate "Xenos Ring Buffer Device"
++	depends on PPC_XENON && HAS_DMA
++	help
++	  Character device supporting raw ringbuffer writes to the Xenos.
++
+ config TTY_PRINTK
+ 	tristate "TTY driver to output user messages via printk"
+ 	depends on EXPERT && TTY
+diff --git a/drivers/char/Makefile b/drivers/char/Makefile
+index 264eb398f..08710bfe2 100644
+--- a/drivers/char/Makefile
++++ b/drivers/char/Makefile
+@@ -11,6 +11,10 @@ obj-$(CONFIG_VIRTIO_CONSOLE)	+= virtio_console.o
+ obj-$(CONFIG_MSPEC)		+= mspec.o
+ obj-$(CONFIG_UV_MMTIMER)	+= uv_mmtimer.o
+ obj-$(CONFIG_IBM_BSR)		+= bsr.o
++obj-$(CONFIG_XENON_SMC)  	+= xenon_smc.o
++obj-$(CONFIG_XENON_ANA)  	+= xenon_ana.o
++obj-$(CONFIG_XENON_PROBE)  	+= xenon_probe.o
++obj-$(CONFIG_XENOS_RB)    += xenos_rb.o
+ 
+ obj-$(CONFIG_PRINTER)		+= lp.o
+ 
+diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
+index 51f1caa10..fd1fa53b4 100644
+--- a/drivers/hwmon/Kconfig
++++ b/drivers/hwmon/Kconfig
+@@ -2178,6 +2178,13 @@ config SENSORS_INTEL_M10_BMC_HWMON
+ 	  sensors monitor various telemetry data of different components on the
+ 	  card, e.g. board temperature, FPGA core temperature/voltage/current.
+ 
++config SENSORS_XENON
++	tristate "Xenon SMC"
++	depends on PPC_XENON
++	help
++	  This driver provides support for the Xenon SMC sensors and
++	  fan control.
++
+ if ACPI
+ 
+ comment "ACPI drivers"
+diff --git a/drivers/hwmon/Makefile b/drivers/hwmon/Makefile
+index 162940270..f005911d5 100644
+--- a/drivers/hwmon/Makefile
++++ b/drivers/hwmon/Makefile
+@@ -200,6 +200,7 @@ obj-$(CONFIG_SENSORS_W83L785TS)	+= w83l785ts.o
+ obj-$(CONFIG_SENSORS_W83L786NG)	+= w83l786ng.o
+ obj-$(CONFIG_SENSORS_WM831X)	+= wm831x-hwmon.o
+ obj-$(CONFIG_SENSORS_WM8350)	+= wm8350-hwmon.o
++obj-$(CONFIG_SENSORS_XENON)	+= xenon-hwmon.o
+ obj-$(CONFIG_SENSORS_XGENE)	+= xgene-hwmon.o
+ 
+ obj-$(CONFIG_SENSORS_OCC)	+= occ/
+diff --git a/drivers/net/ethernet/Kconfig b/drivers/net/ethernet/Kconfig
+index 35ac6fe75..c8a58f8e2 100644
+--- a/drivers/net/ethernet/Kconfig
++++ b/drivers/net/ethernet/Kconfig
+@@ -185,5 +185,6 @@ source "drivers/net/ethernet/via/Kconfig"
+ source "drivers/net/ethernet/wiznet/Kconfig"
+ source "drivers/net/ethernet/xilinx/Kconfig"
+ source "drivers/net/ethernet/xircom/Kconfig"
++source "drivers/net/ethernet/xenon/Kconfig"
+ 
+ endif # ETHERNET
+diff --git a/drivers/net/ethernet/Makefile b/drivers/net/ethernet/Makefile
+index aaa5078cd..a9dd2861b 100644
+--- a/drivers/net/ethernet/Makefile
++++ b/drivers/net/ethernet/Makefile
+@@ -95,5 +95,6 @@ obj-$(CONFIG_NET_VENDOR_VIA) += via/
+ obj-$(CONFIG_NET_VENDOR_WIZNET) += wiznet/
+ obj-$(CONFIG_NET_VENDOR_XILINX) += xilinx/
+ obj-$(CONFIG_NET_VENDOR_XIRCOM) += xircom/
++obj-$(CONFIG_NET_XENON) += xenon/
+ obj-$(CONFIG_NET_VENDOR_SYNOPSYS) += synopsys/
+ obj-$(CONFIG_NET_VENDOR_PENSANDO) += pensando/
+diff --git a/drivers/rtc/Kconfig b/drivers/rtc/Kconfig
+index e1bc52144..2a506527e 100644
+--- a/drivers/rtc/Kconfig
++++ b/drivers/rtc/Kconfig
+@@ -1639,6 +1639,16 @@ config RTC_DRV_PS3
+ 	  This driver can also be built as a module. If so, the module
+ 	  will be called rtc-ps3.
+ 
++config RTC_DRV_XENON
++	tristate "Xenon RTC"
++	depends on PPC_XENON
++	help
++	  If you say yes here you will get support for the RTC on the
++	  Xbox 360.
++
++	  This driver can also be built as a module. If so, the module
++	  will be called rtc-xenon.
++
+ config RTC_DRV_STMP
+ 	tristate "Freescale STMP3xxx/i.MX23/i.MX28 RTC"
+ 	depends on ARCH_MXS || COMPILE_TEST
+diff --git a/drivers/rtc/Makefile b/drivers/rtc/Makefile
+index 5ceeafe4d..8aef02082 100644
+--- a/drivers/rtc/Makefile
++++ b/drivers/rtc/Makefile
+@@ -178,5 +178,6 @@ obj-$(CONFIG_RTC_DRV_WILCO_EC)	+= rtc-wilco-ec.o
+ obj-$(CONFIG_RTC_DRV_WM831X)	+= rtc-wm831x.o
+ obj-$(CONFIG_RTC_DRV_WM8350)	+= rtc-wm8350.o
+ obj-$(CONFIG_RTC_DRV_X1205)	+= rtc-x1205.o
++obj-$(CONFIG_RTC_DRV_XENON)	+= rtc-xenon.o
+ obj-$(CONFIG_RTC_DRV_XGENE)	+= rtc-xgene.o
+ obj-$(CONFIG_RTC_DRV_ZYNQMP)	+= rtc-zynqmp.o
+diff --git a/drivers/scsi/scsi_scan.c b/drivers/scsi/scsi_scan.c
+index 9466474ff..565ff86e8 100644
+--- a/drivers/scsi/scsi_scan.c
++++ b/drivers/scsi/scsi_scan.c
+@@ -654,6 +654,7 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
+ 		memset(scsi_cmd, 0, 6);
+ 		scsi_cmd[0] = INQUIRY;
+ 		scsi_cmd[4] = (unsigned char) try_inquiry_len;
++		scsi_cmd[5] = 0xc0; /* HACK */
+ 
+ 		memset(inq_result, 0, try_inquiry_len);
+ 
+diff --git a/drivers/tty/serial/Kconfig b/drivers/tty/serial/Kconfig
+index 131a6a587..8c11aec2b 100644
+--- a/drivers/tty/serial/Kconfig
++++ b/drivers/tty/serial/Kconfig
+@@ -1528,6 +1528,25 @@ config SERIAL_MILBEAUT_USIO_CONSOLE
+ 	  receives all kernel messages and warnings and which allows logins in
+ 	  single user mode).
+ 
++config SERIAL_XENON
++	tristate "Xenon XBOX 360 serial port support"
++	select SERIAL_CORE
++	help
++	  If you have an XBOX 360, you can enable its onboard
++	  serial port by enabling this options.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called xenon_uart.
++
++config SERIAL_XENON_CONSOLE
++	bool "Console on XBOX 360 serial port"
++	depends on SERIAL_XENON=y
++	select SERIAL_CORE_CONSOLE
++	help
++	  If you have enabled the serial port on the XBOX 360
++
++	  you can make it the console by answering Y to this option.
++
+ config SERIAL_LITEUART
+ 	tristate "LiteUART serial port support"
+ 	depends on HAS_IOMEM
+diff --git a/drivers/tty/serial/Makefile b/drivers/tty/serial/Makefile
+index 7da0856cd..6659b3f64 100644
+--- a/drivers/tty/serial/Makefile
++++ b/drivers/tty/serial/Makefile
+@@ -65,6 +65,7 @@ obj-$(CONFIG_SERIAL_GRLIB_GAISLER_APBUART) += apbuart.o
+ obj-$(CONFIG_SERIAL_ALTERA_JTAGUART) += altera_jtaguart.o
+ obj-$(CONFIG_SERIAL_VT8500) += vt8500_serial.o
+ obj-$(CONFIG_SERIAL_PCH_UART)	+= pch_uart.o
++obj-$(CONFIG_SERIAL_XENON)	+= xenon_uart.o
+ obj-$(CONFIG_SERIAL_MXS_AUART) += mxs-auart.o
+ obj-$(CONFIG_SERIAL_LANTIQ)	+= lantiq.o
+ obj-$(CONFIG_SERIAL_XILINX_PS_UART) += xilinx_uartps.o
+diff --git a/drivers/video/fbdev/Kconfig b/drivers/video/fbdev/Kconfig
+index 6ed5e608d..2164d4110 100644
+--- a/drivers/video/fbdev/Kconfig
++++ b/drivers/video/fbdev/Kconfig
+@@ -659,6 +659,15 @@ config FB_N411
+ 	  This enables support for the Apollo display controller in its
+ 	  Hecuba form using the n411 devkit.
+ 
++config FB_XENOS
++	tristate "Xbox 360 Framebuffer Support"
++	depends on (FB = y) && PPC
++	select FB_CFB_FILLRECT
++	select FB_CFB_COPYAREA
++	select FB_CFB_IMAGEBLIT
++	help
++	  This is the frame buffer device driver for the Microsoft Xbox 360.
++
+ config FB_HGA
+ 	tristate "Hercules mono graphics support"
+ 	depends on FB && X86
+diff --git a/drivers/video/fbdev/Makefile b/drivers/video/fbdev/Makefile
+index 477b9624b..2e64a4e20 100644
+--- a/drivers/video/fbdev/Makefile
++++ b/drivers/video/fbdev/Makefile
+@@ -123,6 +123,7 @@ obj-$(CONFIG_FB_SM712)		  += sm712fb.o
+ obj-$(CONFIG_FB_UVESA)            += uvesafb.o
+ obj-$(CONFIG_FB_VESA)             += vesafb.o
+ obj-$(CONFIG_FB_EFI)              += efifb.o
++obj-$(CONFIG_FB_XENOS)            += xenosfb.o
+ obj-$(CONFIG_FB_VGA16)            += vga16fb.o
+ obj-$(CONFIG_FB_OF)               += offb.o
+ obj-$(CONFIG_FB_MX3)		  += mx3fb.o
+diff --git a/include/linux/fb.h b/include/linux/fb.h
+index 3d7306c9a..1ef9e953f 100644
+--- a/include/linux/fb.h
++++ b/include/linux/fb.h
+@@ -688,6 +688,17 @@ static inline bool fb_be_math(struct fb_info *info)
+ #endif /* CONFIG_FB_FOREIGN_ENDIAN */
+ }
+ 
++static inline int *xenon_convert(struct fb_info *p, int *addr)
++{
++	int index = ((char*)addr) - ((char*)p->screen_base);
++	int y = index / (p->fix.line_length);
++	int x = index % (p->fix.line_length)/4;
++	unsigned int base = ((((y & ~31)*p->var.xres) + (x & ~31)*32 ) +
++	 (((x&3) + ((y&1)<<2) + ((x&28)<<1) + ((y&30)<<5)) ^ ((y&8)<<2))) * 4;
++
++	return (int*)(((char*)p->screen_base)+base);
++}
++
+ /* drivers/video/fbsysfs.c */
+ extern struct fb_info *framebuffer_alloc(size_t size, struct device *dev);
+ extern void framebuffer_release(struct fb_info *info);
+diff --git a/include/linux/pci_ids.h b/include/linux/pci_ids.h
+index 011f2f1ea..72aeb830e 100644
+--- a/include/linux/pci_ids.h
++++ b/include/linux/pci_ids.h
+@@ -2323,6 +2323,8 @@
+ #define PCI_DEVICE_ID_ADDIDATA_APCIe7500       0x7012
+ #define PCI_DEVICE_ID_ADDIDATA_APCIe7800       0x7013
+ 
++#define PCI_VENDOR_ID_MICROSOFT		0x1414
++
+ #define PCI_VENDOR_ID_PDC		0x15e9
+ 
+ #define PCI_VENDOR_ID_FARSITE           0x1619
+diff --git a/include/uapi/linux/serial_core.h b/include/uapi/linux/serial_core.h
+index 8885e6917..31d95bc1d 100644
+--- a/include/uapi/linux/serial_core.h
++++ b/include/uapi/linux/serial_core.h
+@@ -211,6 +211,9 @@
+ /* Atheros AR933X SoC */
+ #define PORT_AR933X	99
+ 
++/* Xenon XBOX 360 Southbridge */
++#define PORT_XENON     91
++
+ /* ARC (Synopsys) on-chip UART */
+ #define PORT_ARC       101
+ 
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index 7fd3fa053..29062d26a 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -89,7 +89,7 @@ config MESSAGE_LOGLEVEL_DEFAULT
+ 
+ config BOOT_PRINTK_DELAY
+ 	bool "Delay each boot printk message by N milliseconds"
+-	depends on DEBUG_KERNEL && PRINTK && GENERIC_CALIBRATE_DELAY
++	depends on DEBUG_KERNEL && PRINTK
+ 	help
+ 	  This build option allows you to read kernel boot messages
+ 	  by inserting a short delay after each one.  The delay is
+diff --git a/sound/pci/Kconfig b/sound/pci/Kconfig
+index 41ce12597..b7af45bc1 100644
+--- a/sound/pci/Kconfig
++++ b/sound/pci/Kconfig
+@@ -909,6 +909,15 @@ config SND_YMFPCI
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called snd-ymfpci.
+ 
++config SND_XENON
++	tristate "Xenon XBOX 360 Sound"
++	select SND_PCM
++	help
++	  Say Y here to include support for the Xenon XBOX 360 soundcard.
++
++	  To compile this driver as a module, choose M here: the module
++	  will be called snd-xenon.
++
+ endif	# SND_PCI
+ 
+ source "sound/pci/hda/Kconfig"
+diff --git a/sound/pci/Makefile b/sound/pci/Makefile
+index 04cac7469..2e3a3e076 100644
+--- a/sound/pci/Makefile
++++ b/sound/pci/Makefile
+@@ -54,6 +54,7 @@ obj-$(CONFIG_SND_SIS7019) += snd-sis7019.o
+ obj-$(CONFIG_SND_SONICVIBES) += snd-sonicvibes.o
+ obj-$(CONFIG_SND_VIA82XX) += snd-via82xx.o
+ obj-$(CONFIG_SND_VIA82XX_MODEM) += snd-via82xx-modem.o
++obj-$(CONFIG_SND_XENON) += snd-xenon.o
+ 
+ obj-$(CONFIG_SND) += \
+ 	ac97/ \
