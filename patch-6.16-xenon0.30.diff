@@ -193,10 +193,10 @@ index 000000000000..e7bd5ecc66d0
 \ No newline at end of file
 diff --git a/arch/powerpc/configs/xenon_defconfig b/arch/powerpc/configs/xenon_defconfig
 new file mode 100644
-index 000000000000..c14a33e38c63
+index 000000000000..c8ba57d7e7a5
 --- /dev/null
 +++ b/arch/powerpc/configs/xenon_defconfig
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,258 @@
 +CONFIG_LOCALVERSION="-xenon"
 +CONFIG_DEFAULT_HOSTNAME="xenon"
 +CONFIG_SYSVIPC=y
@@ -257,6 +257,8 @@ index 000000000000..c14a33e38c63
 +CONFIG_MODVERSIONS=y
 +CONFIG_MODULE_SRCVERSION_ALL=y
 +# CONFIG_CORE_DUMP_DEFAULT_ELF_HEADERS is not set
++CONFIG_ZSWAP=y
++CONFIG_ZSWAP_DEFAULT_ON=y
 +CONFIG_FLATMEM_MANUAL=y
 +CONFIG_NET=y
 +CONFIG_PACKET=y
@@ -280,10 +282,17 @@ index 000000000000..c14a33e38c63
 +CONFIG_FW_LOADER_COMPRESS=y
 +CONFIG_FW_LOADER_COMPRESS_ZSTD=y
 +CONFIG_CONNECTOR=m
++CONFIG_ZRAM=m
++CONFIG_ZRAM_BACKEND_LZ4=y
++CONFIG_ZRAM_BACKEND_LZ4HC=y
++CONFIG_ZRAM_BACKEND_ZSTD=y
++CONFIG_ZRAM_BACKEND_DEFLATE=y
++CONFIG_ZRAM_BACKEND_842=y
++CONFIG_ZRAM_BACKEND_LZO=y
++CONFIG_ZRAM_WRITEBACK=y
 +CONFIG_BLK_DEV_LOOP=y
 +CONFIG_BLK_DEV_LOOP_MIN_COUNT=0
 +CONFIG_BLK_DEV_NBD=m
-+CONFIG_ATA_OVER_ETH=m
 +CONFIG_BLK_DEV_SD=y
 +CONFIG_BLK_DEV_SR=y
 +CONFIG_CHR_DEV_SG=y
@@ -4054,10 +4063,10 @@ index 48e5866c0c9a..643c52addb50 100644
  obj-$(CONFIG_SENSORS_OCC)	+= occ/
 diff --git a/drivers/hwmon/xenon-hwmon.c b/drivers/hwmon/xenon-hwmon.c
 new file mode 100644
-index 000000000000..c48da1f1365d
+index 000000000000..0e910aa7e376
 --- /dev/null
 +++ b/drivers/hwmon/xenon-hwmon.c
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,231 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + *  Xenon HW Monitor via SMC driver.
@@ -4197,20 +4206,22 @@ index 000000000000..c48da1f1365d
 +		case hwmon_pwm_input:
 +			return 0644;
 +		default:
++			break;
 +		}
-+		return 0;
++		break;
 +	case hwmon_temp:
 +		switch (attr) {
 +		case hwmon_temp_label:
 +		case hwmon_temp_input:
 +			return 0444;
 +		default:
++			break;
 +		}
-+		return 0;
++		break;
 +	default:
-+		return 0;
++		break;
 +	}
-+
++	return 0;
 +}
 +
 +static const struct hwmon_channel_info *xenon_info[] = {
