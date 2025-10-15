@@ -193,10 +193,10 @@ index 000000000000..e7bd5ecc66d0
 \ No newline at end of file
 diff --git a/arch/powerpc/configs/xenon_defconfig b/arch/powerpc/configs/xenon_defconfig
 new file mode 100644
-index 000000000000..10e1e4e8e6d0
+index 000000000000..ff1b337e16c3
 --- /dev/null
 +++ b/arch/powerpc/configs/xenon_defconfig
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,260 @@
 +CONFIG_LOCALVERSION="-xenon"
 +CONFIG_DEFAULT_HOSTNAME="xenon"
 +CONFIG_SYSVIPC=y
@@ -205,6 +205,9 @@ index 000000000000..10e1e4e8e6d0
 +CONFIG_PREEMPT_VOLUNTARY=y
 +CONFIG_BSD_PROCESS_ACCT=y
 +CONFIG_BSD_PROCESS_ACCT_V3=y
++CONFIG_TASKSTATS=y
++CONFIG_TASK_XACCT=y
++CONFIG_TASK_IO_ACCOUNTING=y
 +CONFIG_PSI=y
 +CONFIG_IKCONFIG=y
 +CONFIG_IKCONFIG_PROC=y
@@ -4710,7 +4713,7 @@ index 396fcf194b6b..1bc44e7cd830 100644
  		memset(inq_result, 0, try_inquiry_len);
  
 diff --git a/drivers/tty/serial/Kconfig b/drivers/tty/serial/Kconfig
-index 79a8186d3361..1bf07f882212 100644
+index d80353287a05..ee0b0571dd5e 100644
 --- a/drivers/tty/serial/Kconfig
 +++ b/drivers/tty/serial/Kconfig
 @@ -1497,6 +1497,39 @@ config SERIAL_MILBEAUT_USIO_CONSOLE
