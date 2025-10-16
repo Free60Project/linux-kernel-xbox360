@@ -1439,10 +1439,10 @@ index 000000000000..750f8b6bffd4
 +};
 diff --git a/arch/powerpc/platforms/xenon/smp.c b/arch/powerpc/platforms/xenon/smp.c
 new file mode 100644
-index 000000000000..3416c5f66447
+index 000000000000..280c856c02da
 --- /dev/null
 +++ b/arch/powerpc/platforms/xenon/smp.c
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,82 @@
 +/*
 + * SMP support for Xenon machines.
 + *
@@ -1462,6 +1462,7 @@ index 000000000000..3416c5f66447
 +#include <asm/smp.h>
 +#include <asm/udbg.h>
 +
++#include "smp.h"
 +#include "interrupt.h"
 +
 +#define DEBUG
@@ -1526,7 +1527,7 @@ index 000000000000..3416c5f66447
 +}
 diff --git a/arch/powerpc/platforms/xenon/smp.h b/arch/powerpc/platforms/xenon/smp.h
 new file mode 100644
-index 000000000000..900af84ae58d
+index 000000000000..fc2f7b27bc67
 --- /dev/null
 +++ b/arch/powerpc/platforms/xenon/smp.h
 @@ -0,0 +1,8 @@
@@ -1534,7 +1535,7 @@ index 000000000000..900af84ae58d
 +#define XENON_SMP_H
 +
 +#ifdef CONFIG_SMP
-+extern void smp_init_xenon(void);
++extern void __init smp_init_xenon(void);
 +#endif
 +
 +#endif
@@ -1825,10 +1826,10 @@ index 20e6645ab737..6685239fdbd3 100644
  obj-$(CONFIG_AHCI_DA850)	+= ahci_da850.o libahci.o libahci_platform.o
 diff --git a/drivers/ata/sata_xenon.c b/drivers/ata/sata_xenon.c
 new file mode 100644
-index 000000000000..7c9c247bb645
+index 000000000000..79f9a905067d
 --- /dev/null
 +++ b/drivers/ata/sata_xenon.c
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,219 @@
 +/*
 + *  sata_xenon.c - SATA support for xenon southbridge
 + *
@@ -1901,7 +1902,6 @@ index 000000000000..7c9c247bb645
 +static int xenon_init_one (struct pci_dev *pdev, const struct pci_device_id *ent);
 +static int xenon_scr_read (struct ata_link *link, unsigned int sc_reg, u32 *val);
 +static int xenon_scr_write (struct ata_link *link, unsigned int sc_reg, u32 val);//void
-+static void xenon_bmdma_error_handler(struct ata_port *ap);
 +
 +static const struct pci_device_id xenon_pci_tbl[] = {
 +	{ PCI_VDEVICE(MICROSOFT, 0x5803), 0 }, // Hdd
@@ -1924,7 +1924,6 @@ index 000000000000..7c9c247bb645
 +static struct ata_port_operations xenon_ops = {
 +	.inherits		= &ata_bmdma_port_ops,
 +// 	.lost_interrupt		= ATA_OP_NULL,
-+//	.error_handler		= xenon_bmdma_error_handler,
 +	.scr_read		= xenon_scr_read,
 +	.scr_write		= xenon_scr_write,
 +};
@@ -1975,36 +1974,6 @@ index 000000000000..7c9c247bb645
 +	pci_write_config_dword(pdev, cfg_addr, val);
 +	return 0;
 +}
-+
-+static int xenon_softreset(struct ata_link *link, unsigned int *classes, unsigned long deadline)
-+{
-+	struct ata_port *ap = link->ap;
-+	struct pci_dev *pdev = to_pci_dev(ap->host->dev);
-+		/* Host 0 (used for DVD-ROM) has a quirk when used with
-+		   an Toshiba/Samsung drive: It can hang after a device reset.
-+
-+		   While the exact reason is unclear (anyone with a SATA port
-+		   analyzer?), this workaround will not let the reset happen, and
-+		   emulate the detection of an ATAPI device.
-+
-+		   When the workaround is enabled, only ATAPI devices are supported
-+		   on host 0, but on this hardware, nothing else is possible anyway. */
-+	if (pdev->device == 0x5802)
-+	{
-+		classes[0] = ATA_DEV_ATAPI;
-+		classes[1] = ATA_DEV_NONE;
-+		printk(KERN_WARNING "Simulating reset of SATA device 0x5802\n");
-+		return -EIO;
-+	} else {
-+		return ata_sff_softreset(link, classes, deadline);
-+	}
-+}
-+
-+static void xenon_bmdma_error_handler(struct ata_port *ap)
-+{
-+	ata_std_error_handler(ap);
-+}
-+
 +
 +static int xenon_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 +{
@@ -2134,7 +2103,7 @@ index e9b360cdc99a..00c88a2daac3 100644
  
 diff --git a/drivers/char/xenon_ana.c b/drivers/char/xenon_ana.c
 new file mode 100644
-index 000000000000..16d8a130f8a6
+index 000000000000..5a6ded0400dc
 --- /dev/null
 +++ b/drivers/char/xenon_ana.c
 @@ -0,0 +1,197 @@
@@ -2313,7 +2282,7 @@ index 000000000000..16d8a130f8a6
 +	&ana_fops
 +};
 +
-+int __init ana_init(void)
++static int __init ana_init(void)
 +{
 +	int ret = 0;
 +
@@ -2323,7 +2292,7 @@ index 000000000000..16d8a130f8a6
 +	return ret;
 +}
 +
-+void __exit ana_exit(void)
++static void __exit ana_exit(void)
 +{
 +	misc_deregister(&ana_dev);
 +}
@@ -2571,7 +2540,7 @@ index 000000000000..f91587c62fc2
 +MODULE_VERSION(DRV_VERSION);
 diff --git a/drivers/char/xenon_smc.c b/drivers/char/xenon_smc.c
 new file mode 100644
-index 000000000000..12e67c9cf238
+index 000000000000..e16c01e8bf9e
 --- /dev/null
 +++ b/drivers/char/xenon_smc.c
 @@ -0,0 +1,120 @@
@@ -2673,7 +2642,7 @@ index 000000000000..12e67c9cf238
 +	&smc_fops
 +};
 +
-+int __init smc_init(void)
++static int __init smc_init(void)
 +{
 +	int ret = 0;
 +
@@ -2683,7 +2652,7 @@ index 000000000000..12e67c9cf238
 +	return ret;
 +}
 +
-+void __exit smc_exit(void)
++static void __exit smc_exit(void)
 +{
 +	misc_deregister(&smc_dev);
 +}
@@ -4332,7 +4301,7 @@ index 9a0333ec1a86..a777203acd29 100644
  obj-$(CONFIG_LEDS_EXPRESSWIRE)		+= leds-expresswire.o
 diff --git a/drivers/leds/leds-xenon.c b/drivers/leds/leds-xenon.c
 new file mode 100644
-index 000000000000..d2257ba6a52e
+index 000000000000..528e2c330f06
 --- /dev/null
 +++ b/drivers/leds/leds-xenon.c
 @@ -0,0 +1,170 @@
@@ -4384,7 +4353,7 @@ index 000000000000..d2257ba6a52e
 +	struct xenon_led *led = container_of(cdev, struct xenon_led, cdev);
 +	unsigned char smc_msg[16];
 +	unsigned char led_state_old = led_state;
-+	int flags = 0;
++	unsigned long flags = 0;
 +
 +	/* lock it so we can't mangle the led_state if we get here twice */
 +	spin_lock_irqsave(&led_lock, flags);
@@ -4770,10 +4739,10 @@ index a2ccbc508ec5..ea5b643461f4 100644
  obj-$(CONFIG_SERIAL_PMACZILOG)		+= pmac_zilog.o
 diff --git a/drivers/tty/serial/xenon_uart.c b/drivers/tty/serial/xenon_uart.c
 new file mode 100644
-index 000000000000..e184845ecdeb
+index 000000000000..ac1e476ae692
 --- /dev/null
 +++ b/drivers/tty/serial/xenon_uart.c
-@@ -0,0 +1,493 @@
+@@ -0,0 +1,496 @@
 +/* linux/drivers/serial/xenon.c
 + *
 + * Driver for Xenon XBOX 360 Serial
@@ -4927,7 +4896,7 @@ index 000000000000..e184845ecdeb
 +static void xenon_set_termios(struct uart_port *port,
 +							  struct ktermios *new, const struct ktermios *old)
 +{
-+	int baud, quot, cflag = new->c_cflag;
++	int cflag = new->c_cflag;
 +
 +	dprintk("Xenon xenon_set_termios()");
 +	/* get the byte size */
@@ -4967,9 +4936,12 @@ index 000000000000..e184845ecdeb
 +	else
 +		pr_debug(" - RTS/CTS is disabled\n");
 +
++	/* FIXME: never actually used? */
++#if 0
 +	/* Set baud rate */
 +	baud = uart_get_baud_rate(port, new, old, 0, port->uartclk/16);
 +	quot = uart_get_divisor(port, baud);
++#endif
 +}
 +
 +// Filthy hack to get around the fact that the xbox 360 SMC doesn't actually have proper interrupts for UART receiving.
