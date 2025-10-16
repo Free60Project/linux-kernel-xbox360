@@ -1,0 +1,6446 @@
+diff --git a/arch/powerpc/Kconfig.debug b/arch/powerpc/Kconfig.debug
+index f15e5920080b..e0cc5ddfed7e 100644
+--- a/arch/powerpc/Kconfig.debug
++++ b/arch/powerpc/Kconfig.debug
+@@ -254,6 +254,14 @@ config PPC_EARLY_DEBUG_PS3GELIC
+ 	  Select this to enable early debugging for the PlayStation3 via
+ 	  UDP broadcasts sent out through the Ethernet port.
+ 
++config PPC_EARLY_DEBUG_XENON
++	bool "Early debugging through Xenos framebuffer"
++	depends on PPC_XENON
++	select XENON_UDBG
++	help
++	  Select this to enable early debugging for the Xenon via
++	  early framebuffer support.
++
+ config PPC_EARLY_DEBUG_OPAL_RAW
+ 	bool "OPAL raw console"
+ 	depends on HVC_OPAL
+diff --git a/arch/powerpc/boot/.gitignore b/arch/powerpc/boot/.gitignore
+index 5a867f23fe7f..27bedf3de520 100644
+--- a/arch/powerpc/boot/.gitignore
++++ b/arch/powerpc/boot/.gitignore
+@@ -33,6 +33,7 @@ zImage.*lds
+ zImage.miboot
+ zImage.pmac
+ zImage.pseries
++zImage.xenon
+ zconf.h
+ zlib.h
+ zutil.h
+diff --git a/arch/powerpc/boot/Makefile b/arch/powerpc/boot/Makefile
+index c47b78c1d3e7..6b4cd7ce5c2d 100644
+--- a/arch/powerpc/boot/Makefile
++++ b/arch/powerpc/boot/Makefile
+@@ -277,6 +277,7 @@ quiet_cmd_wrap	= WRAP    $@
+ image-$(CONFIG_PPC_PSERIES)		+= zImage.pseries
+ image-$(CONFIG_PPC_POWERNV)		+= zImage.pseries
+ image-$(CONFIG_PPC_PS3)			+= dtbImage.ps3
++image-$(CONFIG_PPC_XENON)		+= zImage.xenon
+ image-$(CONFIG_PPC_CHRP)		+= zImage.chrp
+ image-$(CONFIG_PPC_EFIKA)		+= zImage.chrp
+ image-$(CONFIG_PPC_PMAC)		+= zImage.pmac
+@@ -397,6 +398,11 @@ $(obj)/dtbImage.%: vmlinux $(wrapperbits) $(obj)/dts/%.dtb FORCE
+ $(obj)/vmlinux.strip: vmlinux
+ 	$(STRIP) -s -R .comment $< -o $@
+ 
++$(obj)/zImage.xenon: $(obj)/vmlinux.strip
++	@$(OBJCOPY) -O elf32-powerpc $< $@
++	@test -e /mnt/e/Misc/tftpd64 && \
++	   cp -f $@ /mnt/e/Misc/tftpd64/vmlinux || true
++
+ $(obj)/uImage: vmlinux $(wrapperbits) FORCE
+ 	$(call if_changed,wrap,uboot)
+ 
+diff --git a/arch/powerpc/boot/dts/xenon.dts b/arch/powerpc/boot/dts/xenon.dts
+new file mode 100644
+index 000000000000..e7bd5ecc66d0
+--- /dev/null
++++ b/arch/powerpc/boot/dts/xenon.dts
+@@ -0,0 +1,131 @@
++/*
++ * xenon.dts - Xbox360 Game Console device tree.
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; version 2 of the License.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++/dts-v1/;
++
++/ {
++	model = "Xenon Game Console";
++	compatible = "XENON";
++	#address-cells = <2>;
++	#size-cells = <1>;
++
++	/*
++     * Bootargs will be created here, as well as initrd properties if relevant
++     */
++	chosen {
++		linux,platform = <0x00000801>;
++	};
++
++	memory {
++		device_type = "memory";
++		reg = <0x00000000 0x00000000 0x1e000000>;
++	};
++
++	cpus {
++		#cpus = <1>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		Xenon,PPE@0 {
++			device_type = "cpu";
++			linux,boot-cpu;
++			reg = <0>;
++			ibm,ppc-interrupt-server#s = <0 1>;
++			timebase-frequency = <0x2FAF080>; // 50 MHz
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x80>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x80>;
++
++					/* this must be configured with regard to the HID6:LB value */
++			ibm,segment-page-sizes = <
++				0xC   0     1 0xc   0     // 4k page
++				0x10  0x100 1 0x10 00     // 64k pages
++				0x18  0x110 1 0x18 01     // 16M pages
++			>;
++		};
++		Xenon,PPE@1 {
++			device_type = "cpu";
++			reg = <2>;
++			ibm,ppc-interrupt-server#s = <2 3>;
++			timebase-frequency = <0x2FAF080>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x80>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x80>;
++		};
++		Xenon,PPE@2 {
++			device_type = "cpu";
++			reg = <4>;
++			ibm,ppc-interrupt-server#s = <4 5>;
++			timebase-frequency = <0x2FAF080>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x80>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x80>;
++		};
++	};
++
++	pci {
++		compatible = "xenon";
++		device_type = "pci";
++		#address-cells = <3>;  // phy up, mid, low
++		#size-cells = <1>;
++		#interrupt-cells = <1>;
++
++		interrupt-parent = <0x40000>;
++		// interrupts = <18 2>;
++		interrupt-map-mask = <0xf900 0 0 0>; // type, lower, upper, irq
++
++		interrupt-map = <
++			0x0000 0 0 0  0x40000 0x40  // XMA
++			0x0800 0 0 0  0x40000 0x24  // SATA cdrom
++			0x1000 0 0 0  0x40000 0x20  // SATA disk
++			0x2000 0 0 0  0x40000 0x2c  // USB OHCI #1
++			0x2100 0 0 0  0x40000 0x30  // USB EHCI #1
++			0x2800 0 0 0  0x40000 0x34  // USB OHCI #2
++			0x2900 0 0 0  0x40000 0x38  // USB EHCI #2
++			0x3800 0 0 0  0x40000 0x4c  // Enet
++			0x4000 0 0 0  0x40000 0x18  // Flash
++			0x4800 0 0 0  0x40000 0x44  // audio out
++			0x5000 0 0 0  0x40000 0x14  // SMM, GPIO, ...
++			0x7800 0 0 0  0x40000 0x58  // Xenos
++		>;
++
++		bus-range = <0 0>;
++		ranges = <
++			0x02000000 0x00000000 0x80000000 0x00000200 0x80000000 0x80000000 // PCI space at 80000000 is mapped to 200 80000000
++			0x02000000 0x00000000 0x00000000 0x00000000 0x00000000 0x20000000 // RAM is 1:1 mapped
++		>;
++	};
++
++	interrupt-controller {
++		compatible = "xenon";
++		linux,phandle = <0x40000>;
++		interrupt-controller;
++		#address-cells = <0>;
++		#interrupt-cells = <1>;
++		built-in;
++		reg = <0x00000200 0x00050000 0x6000>;
++		interrupts = <
++			0x7c 0x78 0x74 0x70 0x6c 0x68 0x64 0x60
++			0x5c 0x58 0x54 0x50 0x4c 0x48 0x44 0x40
++			0x3c 0x38 0x34 0x30 0x2c 0x28 0x24 0x20
++			0x1c 0x18 0x14 0x10 0x0c 0x08 0x04
++		>;
++	};
++};
+\ No newline at end of file
+diff --git a/arch/powerpc/configs/xenon_defconfig b/arch/powerpc/configs/xenon_defconfig
+new file mode 100644
+index 000000000000..ff1b337e16c3
+--- /dev/null
++++ b/arch/powerpc/configs/xenon_defconfig
+@@ -0,0 +1,260 @@
++CONFIG_LOCALVERSION="-xenon"
++CONFIG_DEFAULT_HOSTNAME="xenon"
++CONFIG_SYSVIPC=y
++CONFIG_POSIX_MQUEUE=y
++CONFIG_BPF_SYSCALL=y
++CONFIG_PREEMPT_VOLUNTARY=y
++CONFIG_BSD_PROCESS_ACCT=y
++CONFIG_BSD_PROCESS_ACCT_V3=y
++CONFIG_TASKSTATS=y
++CONFIG_TASK_XACCT=y
++CONFIG_TASK_IO_ACCOUNTING=y
++CONFIG_PSI=y
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
++CONFIG_CGROUPS=y
++CONFIG_MEMCG=y
++CONFIG_BLK_CGROUP=y
++CONFIG_CGROUP_SCHED=y
++CONFIG_CGROUP_PIDS=y
++CONFIG_CGROUP_RDMA=y
++CONFIG_CGROUP_FREEZER=y
++CONFIG_CGROUP_HUGETLB=y
++CONFIG_CPUSETS=y
++CONFIG_CGROUP_DEVICE=y
++CONFIG_CGROUP_CPUACCT=y
++CONFIG_CGROUP_BPF=y
++CONFIG_CGROUP_MISC=y
++CONFIG_NAMESPACES=y
++CONFIG_USER_NS=y
++CONFIG_RELAY=y
++CONFIG_BLK_DEV_INITRD=y
++CONFIG_EXPERT=y
++CONFIG_KEXEC=y
++CONFIG_KEXEC_FILE=y
++# CONFIG_CRASH_DUMP is not set
++CONFIG_PPC64=y
++CONFIG_CELL_CPU=y
++CONFIG_ALTIVEC=y
++# CONFIG_PPC_RADIX_MMU is not set
++CONFIG_SMP=y
++CONFIG_NR_CPUS=6
++CONFIG_NR_IRQS=384
++# CONFIG_PPC_POWERNV is not set
++# CONFIG_PPC_PSERIES is not set
++# CONFIG_PPC_PMAC is not set
++# CONFIG_PPC_OF_BOOT_TRAMPOLINE is not set
++CONFIG_CPU_FREQ=y
++CONFIG_CPU_FREQ_GOV_POWERSAVE=y
++CONFIG_CPU_FREQ_GOV_USERSPACE=y
++CONFIG_CPU_FREQ_GOV_ONDEMAND=y
++CONFIG_CPU_FREQ_GOV_CONSERVATIVE=y
++CONFIG_HZ_300=y
++CONFIG_PPC64_SUPPORTS_MEMORY_FAILURE=y
++CONFIG_THREAD_SHIFT=15
++CONFIG_SCHED_SMT=y
++CONFIG_PPC_DENORMALISATION=y
++CONFIG_MODULES=y
++CONFIG_MODULE_UNLOAD=y
++CONFIG_MODULE_FORCE_UNLOAD=y
++CONFIG_MODVERSIONS=y
++CONFIG_MODULE_SRCVERSION_ALL=y
++# CONFIG_CORE_DUMP_DEFAULT_ELF_HEADERS is not set
++CONFIG_ZSWAP=y
++CONFIG_ZSWAP_DEFAULT_ON=y
++CONFIG_FLATMEM_MANUAL=y
++CONFIG_NET=y
++CONFIG_PACKET=y
++CONFIG_UNIX=y
++CONFIG_INET=y
++CONFIG_IP_MULTICAST=y
++CONFIG_IP_PNP=y
++CONFIG_IP_PNP_DHCP=y
++CONFIG_IP_PNP_BOOTP=y
++# CONFIG_WIRELESS is not set
++CONFIG_PCI=y
++CONFIG_PCIEPORTBUS=y
++CONFIG_PCIEAER=y
++CONFIG_PCI_MSI=y
++CONFIG_PCI_DEBUG=y
++CONFIG_VGA_ARB_MAX_GPUS=1
++CONFIG_HOTPLUG_PCI=y
++CONFIG_UEVENT_HELPER=y
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++CONFIG_FW_LOADER_COMPRESS=y
++CONFIG_FW_LOADER_COMPRESS_ZSTD=y
++CONFIG_CONNECTOR=m
++CONFIG_ZRAM=m
++CONFIG_ZRAM_BACKEND_LZ4=y
++CONFIG_ZRAM_BACKEND_LZ4HC=y
++CONFIG_ZRAM_BACKEND_ZSTD=y
++CONFIG_ZRAM_BACKEND_DEFLATE=y
++CONFIG_ZRAM_BACKEND_842=y
++CONFIG_ZRAM_BACKEND_LZO=y
++CONFIG_ZRAM_WRITEBACK=y
++CONFIG_BLK_DEV_LOOP=y
++CONFIG_BLK_DEV_LOOP_MIN_COUNT=0
++CONFIG_BLK_DEV_NBD=m
++CONFIG_BLK_DEV_SD=y
++CONFIG_BLK_DEV_SR=y
++CONFIG_CHR_DEV_SG=y
++# CONFIG_BLK_DEV_BSG is not set
++CONFIG_SCSI_CONSTANTS=y
++CONFIG_ATA=y
++CONFIG_SATA_XENON=y
++CONFIG_NETDEVICES=y
++CONFIG_NETCONSOLE=y
++CONFIG_NETCONSOLE_DYNAMIC=y
++CONFIG_SIS190=y
++CONFIG_USB_USBNET=y
++# CONFIG_USB_NET_AX8817X is not set
++# CONFIG_USB_NET_NET1080 is not set
++CONFIG_USB_NET_PLUSB=y
++# CONFIG_USB_NET_CDC_SUBSET is not set
++# CONFIG_USB_NET_ZAURUS is not set
++# CONFIG_WLAN is not set
++CONFIG_INPUT_MOUSEDEV=y
++CONFIG_INPUT_JOYDEV=m
++CONFIG_INPUT_EVDEV=m
++# CONFIG_INPUT_KEYBOARD is not set
++# CONFIG_INPUT_MOUSE is not set
++CONFIG_INPUT_JOYSTICK=y
++CONFIG_JOYSTICK_XPAD=m
++CONFIG_JOYSTICK_XPAD_FF=y
++CONFIG_JOYSTICK_XPAD_LEDS=y
++CONFIG_INPUT_MISC=y
++CONFIG_INPUT_UINPUT=m
++CONFIG_SERIAL_XENON=y
++CONFIG_SERIAL_XENON_CONSOLE=y
++CONFIG_SERIAL_XENON_UART_POLL=y
++CONFIG_SERIAL_NONSTANDARD=y
++CONFIG_XENON_SMC=y
++CONFIG_XENON_ANA=y
++CONFIG_TTY_PRINTK=y
++# CONFIG_HW_RANDOM is not set
++CONFIG_I2C_SIS96X=m
++CONFIG_SENSORS_XENON=y
++CONFIG_DRM=y
++CONFIG_DRM_PANIC=y
++CONFIG_DRM_XENOS=y
++CONFIG_FB=y
++CONFIG_HID_BATTERY_STRENGTH=y
++CONFIG_HIDRAW=y
++CONFIG_HID_A4TECH=m
++CONFIG_HID_CHERRY=m
++CONFIG_HID_GYRATION=m
++CONFIG_HID_MICROSOFT=y
++CONFIG_HID_NINTENDO=m
++CONFIG_NINTENDO_FF=y
++CONFIG_HID_SONY=y
++CONFIG_SONY_FF=y
++CONFIG_HID_WIIMOTE=m
++# CONFIG_I2C_HID is not set
++CONFIG_USB_HIDDEV=y
++CONFIG_USB=y
++CONFIG_USB_ANNOUNCE_NEW_DEVICES=y
++CONFIG_USB_MON=y
++CONFIG_USB_EHCI_HCD=y
++# CONFIG_USB_EHCI_TT_NEWSCHED is not set
++CONFIG_USB_OHCI_HCD=y
++CONFIG_USB_ACM=m
++CONFIG_USB_STORAGE=y
++CONFIG_USB_UAS=y
++CONFIG_USBIP_CORE=m
++CONFIG_USBIP_VHCI_HCD=m
++CONFIG_USBIP_HOST=m
++CONFIG_USBIP_DEBUG=y
++CONFIG_USB_SERIAL=m
++CONFIG_USB_SERIAL_FTDI_SIO=m
++CONFIG_USB_SERIAL_PL2303=m
++CONFIG_NEW_LEDS=y
++CONFIG_LEDS_CLASS=y
++CONFIG_LEDS_XENON=y
++CONFIG_LEDS_TRIGGERS=y
++CONFIG_LEDS_TRIGGER_TIMER=y
++CONFIG_LEDS_TRIGGER_DISK=y
++CONFIG_LEDS_TRIGGER_HEARTBEAT=y
++CONFIG_LEDS_TRIGGER_CPU=y
++CONFIG_LEDS_TRIGGER_ACTIVITY=y
++CONFIG_LEDS_TRIGGER_DEFAULT_ON=y
++CONFIG_LEDS_TRIGGER_PANIC=y
++CONFIG_LEDS_TRIGGER_NETDEV=y
++CONFIG_RTC_CLASS=y
++CONFIG_RTC_DRV_XENON=y
++# CONFIG_VIRTIO_MENU is not set
++# CONFIG_VHOST_MENU is not set
++# CONFIG_IOMMU_SUPPORT is not set
++CONFIG_EXT2_FS=y
++CONFIG_EXT2_FS_XATTR=y
++CONFIG_EXT2_FS_POSIX_ACL=y
++CONFIG_EXT2_FS_SECURITY=y
++CONFIG_EXT3_FS=y
++CONFIG_EXT3_FS_POSIX_ACL=y
++CONFIG_EXT3_FS_SECURITY=y
++CONFIG_XFS_FS=m
++CONFIG_XFS_QUOTA=y
++CONFIG_XFS_POSIX_ACL=y
++CONFIG_BTRFS_FS=m
++CONFIG_BTRFS_FS_POSIX_ACL=y
++CONFIG_FANOTIFY=y
++CONFIG_AUTOFS_FS=m
++CONFIG_FUSE_FS=m
++CONFIG_OVERLAY_FS=y
++CONFIG_ISO9660_FS=m
++CONFIG_JOLIET=y
++CONFIG_ZISOFS=y
++CONFIG_UDF_FS=m
++CONFIG_VFAT_FS=y
++CONFIG_EXFAT_FS=m
++CONFIG_NTFS_FS=m
++CONFIG_PROC_KCORE=y
++CONFIG_TMPFS=y
++CONFIG_TMPFS_POSIX_ACL=y
++CONFIG_HUGETLBFS=y
++CONFIG_CONFIGFS_FS=y
++CONFIG_HFS_FS=m
++CONFIG_HFSPLUS_FS=m
++CONFIG_SQUASHFS=y
++CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU=y
++CONFIG_SQUASHFS_XATTR=y
++CONFIG_SQUASHFS_LZO=y
++CONFIG_NFS_FS=y
++CONFIG_NFS_V3_ACL=y
++CONFIG_NFS_V4=y
++CONFIG_NFS_SWAP=y
++CONFIG_ROOT_NFS=y
++CONFIG_NFSD=y
++CONFIG_NFSD_V3_ACL=y
++CONFIG_NFSD_V4=y
++CONFIG_CIFS=m
++CONFIG_SMB_SERVER=m
++CONFIG_NLS_CODEPAGE_437=y
++CONFIG_NLS_ASCII=y
++CONFIG_NLS_ISO8859_1=y
++CONFIG_NLS_UTF8=y
++CONFIG_SECURITY=y
++CONFIG_SECURITY_NETWORK=y
++CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity"
++CONFIG_CRYPTO_AES=y
++CONFIG_CRYPTO_DES=y
++CONFIG_CRYPTO_CBC=y
++CONFIG_CRYPTO_ECHAINIV=m
++CONFIG_CRYPTO_ANSI_CPRNG=m
++# CONFIG_CRYPTO_HW is not set
++CONFIG_PRINTK_TIME=y
++CONFIG_MAGIC_SYSRQ=y
++CONFIG_DEBUG_FS=y
++# CONFIG_SLUB_DEBUG is not set
++CONFIG_DETECT_HUNG_TASK=y
++CONFIG_BOOTPARAM_HUNG_TASK_PANIC=y
++CONFIG_DEBUG_SPINLOCK=y
++CONFIG_DEBUG_MUTEXES=y
++CONFIG_STACKTRACE=y
++CONFIG_RCU_CPU_STALL_TIMEOUT=60
++# CONFIG_RCU_TRACE is not set
++# CONFIG_FTRACE is not set
++# CONFIG_STRICT_DEVMEM is not set
++CONFIG_PPC_DISABLE_WERROR=y
++CONFIG_PPC_EARLY_DEBUG=y
++# CONFIG_RUNTIME_TESTING_MENU is not set
+diff --git a/arch/powerpc/include/asm/cacheflush.h b/arch/powerpc/include/asm/cacheflush.h
+index f2656774aaa9..46152929f582 100644
+--- a/arch/powerpc/include/asm/cacheflush.h
++++ b/arch/powerpc/include/asm/cacheflush.h
+@@ -107,6 +107,7 @@ static inline void clean_dcache_range(unsigned long start, unsigned long stop)
+  * to invalidate the cache so the PPC core doesn't get stale data
+  * from the CPM (no cache snooping here :-).
+  */
++#ifndef CONFIG_PPC_XENON
+ static inline void invalidate_dcache_range(unsigned long start,
+ 					   unsigned long stop)
+ {
+@@ -120,6 +121,15 @@ static inline void invalidate_dcache_range(unsigned long start,
+ 		dcbi(addr);
+ 	mb();	/* sync */
+ }
++#else
++// the 970FX doesn't have dcbi. Yes, really. See 2.2.1.2:
++// https://marcan.st/transf/970FX_user_manual.v1.7.2008MAR14_pub.pdf
++static inline void invalidate_dcache_range(unsigned long start,
++					   unsigned long stop)
++{
++	flush_dcache_range(start, stop);
++}
++#endif
+ 
+ #ifdef CONFIG_44x
+ static inline void flush_instruction_cache(void)
+diff --git a/arch/powerpc/include/asm/cputable.h b/arch/powerpc/include/asm/cputable.h
+index 29a529d2ab8b..99fe4472c5d9 100644
+--- a/arch/powerpc/include/asm/cputable.h
++++ b/arch/powerpc/include/asm/cputable.h
+@@ -462,6 +462,10 @@ static inline void cpu_feature_keys_init(void) { }
+ 	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
+ 	    CPU_FTR_PAUSE_ZERO  | CPU_FTR_CELL_TB_BUG | CPU_FTR_CP_USE_DCBTZ | \
+ 	    CPU_FTR_UNALIGNED_LD_STD | CPU_FTR_DABRX)
++#define CPU_FTRS_XENON (CPU_FTR_LWSYNC | \
++	    CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_CTRL | \
++	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
++	    CPU_FTR_CELL_TB_BUG )
+ #define CPU_FTRS_PA6T (CPU_FTR_LWSYNC | \
+ 	    CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_ALTIVEC_COMP | \
+ 	    CPU_FTR_PURR | CPU_FTR_REAL_LE | CPU_FTR_DABRX)
+@@ -517,6 +521,9 @@ enum {
+ #endif
+ #ifdef CONFIG_PPC_E500MC
+ 	    CPU_FTRS_E500MC | CPU_FTRS_E5500 | CPU_FTRS_E6500 |
++#endif
++#ifdef CONFIG_PPC_XENON
++		CPU_FTRS_XENON |
+ #endif
+ 	    0,
+ };
+diff --git a/arch/powerpc/include/asm/mmu.h b/arch/powerpc/include/asm/mmu.h
+index 4182d68d9cd1..6f769f987b57 100644
+--- a/arch/powerpc/include/asm/mmu.h
++++ b/arch/powerpc/include/asm/mmu.h
+@@ -135,6 +135,8 @@
+ #define MMU_FTRS_POWER11	MMU_FTRS_POWER6
+ #define MMU_FTRS_CELL		MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
+ 				MMU_FTR_CI_LARGE_PAGE
++#define MMU_FTRS_XENON  MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
++               MMU_FTR_CI_LARGE_PAGE
+ #define MMU_FTRS_PA6T		MMU_FTRS_DEFAULT_HPTE_ARCH_V2 | \
+ 				MMU_FTR_CI_LARGE_PAGE | MMU_FTR_NO_SLBIE_B
+ #ifndef __ASSEMBLY__
+diff --git a/arch/powerpc/include/asm/udbg.h b/arch/powerpc/include/asm/udbg.h
+index a8681b12864f..a7b4ab55a620 100644
+--- a/arch/powerpc/include/asm/udbg.h
++++ b/arch/powerpc/include/asm/udbg.h
+@@ -48,6 +48,7 @@ void __init udbg_init_usbgecko(void);
+ void __init udbg_init_memcons(void);
+ void __init udbg_init_ehv_bc(void);
+ void __init udbg_init_ps3gelic(void);
++void __init udbg_init_xenon(void);
+ void __init udbg_init_debug_opal_raw(void);
+ void __init udbg_init_debug_opal_hvsi(void);
+ void __init udbg_init_debug_16550(void);
+diff --git a/arch/powerpc/kernel/cpu_specs_book3s_64.h b/arch/powerpc/kernel/cpu_specs_book3s_64.h
+index 98d4274a1b6b..734e617feef7 100644
+--- a/arch/powerpc/kernel/cpu_specs_book3s_64.h
++++ b/arch/powerpc/kernel/cpu_specs_book3s_64.h
+@@ -499,6 +499,17 @@ static struct cpu_spec cpu_specs[] __initdata = {
+ 		.pmc_type		= PPC_PMC_IBM,
+ 		.platform		= "ppc-cell-be",
+ 	},
++	{    /* Xenon */
++		.pvr_mask        = 0xffff0000,
++		.pvr_value        = 0x00710000,
++		.cpu_name        = "Xenon",
++		.cpu_features        = CPU_FTRS_XENON,
++		.cpu_user_features    = COMMON_USER_PPC64 | PPC_FEATURE_HAS_ALTIVEC_COMP | PPC_FEATURE_SMT,
++		.mmu_features        = MMU_FTRS_XENON,
++		.icache_bsize        = 128,
++		.dcache_bsize        = 128,
++		.platform        = "xenon",
++	},
+ 	{	/* PA Semi PA6T */
+ 		.pvr_mask		= 0x7fff0000,
+ 		.pvr_value		= 0x00900000,
+diff --git a/arch/powerpc/kernel/misc_64.S b/arch/powerpc/kernel/misc_64.S
+index a997c7f43dc0..7303ae36aaa2 100644
+--- a/arch/powerpc/kernel/misc_64.S
++++ b/arch/powerpc/kernel/misc_64.S
+@@ -74,7 +74,7 @@ _GLOBAL(rmci_off)
+ 	blr
+ #endif /* CONFIG_PPC_EARLY_DEBUG_BOOTX */
+ 
+-#ifdef CONFIG_PPC_PMAC
++#if defined(CONFIG_PPC_PMAC) || defined(CONFIG_PPC_XENON)
+ 
+ /*
+  * Do an IO access in real mode
+diff --git a/arch/powerpc/kernel/prom.c b/arch/powerpc/kernel/prom.c
+index 9ed9dde7d231..258ecb60ff37 100644
+--- a/arch/powerpc/kernel/prom.c
++++ b/arch/powerpc/kernel/prom.c
+@@ -352,6 +352,7 @@ static int __init early_init_dt_scan_cpus(unsigned long node,
+ 		intserv = of_get_flat_dt_prop(node, "reg", &len);
+ 
+ 	nthreads = len / sizeof(int);
++	DBG("%s with %d threads \"%s\" v%d", type, nthreads, uname, fdt_version(initial_boot_params));
+ 
+ 	/*
+ 	 * Now see if any of these threads match our boot cpu.
+diff --git a/arch/powerpc/kernel/udbg.c b/arch/powerpc/kernel/udbg.c
+index 862b22b2b616..abb30448cf7b 100644
+--- a/arch/powerpc/kernel/udbg.c
++++ b/arch/powerpc/kernel/udbg.c
+@@ -58,6 +58,8 @@ void __init udbg_early_init(void)
+ 	udbg_init_debug_opal_raw();
+ #elif defined(CONFIG_PPC_EARLY_DEBUG_OPAL_HVSI)
+ 	udbg_init_debug_opal_hvsi();
++#elif defined(CONFIG_PPC_EARLY_DEBUG_XENON)
++	udbg_init_xenon();
+ #elif defined(CONFIG_PPC_EARLY_DEBUG_16550)
+ 	udbg_init_debug_16550();
+ #endif
+diff --git a/arch/powerpc/platforms/Kconfig b/arch/powerpc/platforms/Kconfig
+index fea3766eac0f..c46e134cb188 100644
+--- a/arch/powerpc/platforms/Kconfig
++++ b/arch/powerpc/platforms/Kconfig
+@@ -20,6 +20,7 @@ source "arch/powerpc/platforms/44x/Kconfig"
+ source "arch/powerpc/platforms/amigaone/Kconfig"
+ source "arch/powerpc/platforms/book3s/Kconfig"
+ source "arch/powerpc/platforms/microwatt/Kconfig"
++source "arch/powerpc/platforms/xenon/Kconfig"
+ 
+ config KVM_GUEST
+ 	bool "KVM Guest support"
+diff --git a/arch/powerpc/platforms/Kconfig.cputype b/arch/powerpc/platforms/Kconfig.cputype
+index 7b527d18aa5e..a75fe6bd417b 100644
+--- a/arch/powerpc/platforms/Kconfig.cputype
++++ b/arch/powerpc/platforms/Kconfig.cputype
+@@ -575,8 +575,8 @@ config NR_CPUS
+ 
+ config NOT_COHERENT_CACHE
+ 	bool
+-	depends on 44x || PPC_8xx || PPC_MPC512x || \
+-		GAMECUBE_COMMON || AMIGAONE
++	depends on 4xx || PPC_8xx || PPC_MPC512x || \
++		GAMECUBE_COMMON || AMIGAONE || PPC_XENON
+ 	select ARCH_HAS_DMA_PREP_COHERENT
+ 	select ARCH_HAS_SYNC_DMA_FOR_DEVICE
+ 	select ARCH_HAS_SYNC_DMA_FOR_CPU
+diff --git a/arch/powerpc/platforms/Makefile b/arch/powerpc/platforms/Makefile
+index 3cee4a842736..b75d44e1c7ec 100644
+--- a/arch/powerpc/platforms/Makefile
++++ b/arch/powerpc/platforms/Makefile
+@@ -17,6 +17,7 @@ obj-$(CONFIG_PPC_PSERIES)	+= pseries/
+ obj-$(CONFIG_PPC_PASEMI)	+= pasemi/
+ obj-$(CONFIG_PPC_CELL)		+= cell/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
++obj-$(CONFIG_PPC_XENON)		+= xenon/
+ obj-$(CONFIG_EMBEDDED6xx)	+= embedded6xx/
+ obj-$(CONFIG_AMIGAONE)		+= amigaone/
+ obj-$(CONFIG_PPC_BOOK3S)	+= book3s/
+diff --git a/arch/powerpc/platforms/xenon/Kconfig b/arch/powerpc/platforms/xenon/Kconfig
+new file mode 100644
+index 000000000000..cc67e77c2329
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/Kconfig
+@@ -0,0 +1,17 @@
++config PPC_XENON
++	bool "Xenon"
++	depends on PPC64
++	select HAVE_PCI
++	select PPC_HASH_MMU_NATIVE
++	default y
++	help
++	  This option enables support for the Xbox 360 game console
++	  without a hypervisor.
++
++config XENON_UDBG
++	bool "Xenon Early Console"
++	depends on PPC_XENON
++	select FONT_SUPPORT
++	help
++		This option enables early debugging over ethernet for the
++		Xenon platform.
+diff --git a/arch/powerpc/platforms/xenon/Makefile b/arch/powerpc/platforms/xenon/Makefile
+new file mode 100644
+index 000000000000..a67d575f856e
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/Makefile
+@@ -0,0 +1,4 @@
++obj-y += setup.o interrupt.o pci.o time.o hardware.o
++
++obj-$(CONFIG_SMP) += smp.o
++obj-$(CONFIG_XENON_UDBG) += xe_udbg.o
+\ No newline at end of file
+diff --git a/arch/powerpc/platforms/xenon/hardware.c b/arch/powerpc/platforms/xenon/hardware.c
+new file mode 100644
+index 000000000000..a46595ce96b4
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/hardware.c
+@@ -0,0 +1,36 @@
++/*
++ *  Xenon hardware related routines.
++ *
++ *  Copyright (C) 2010 Herbert Poetzl
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; version 2 of the License.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/platform_device.h>
++#include <linux/module.h>
++#include <linux/err.h>
++
++static int __init xenon_hwmon_init(void)
++{
++	struct platform_device *pdev;
++
++	pdev = platform_device_register_simple("xenon-hwmon", -1, NULL, 0);
++	if (IS_ERR(pdev))
++		return PTR_ERR(pdev);
++
++	return 0;
++}
++
++module_init(xenon_hwmon_init);
+diff --git a/arch/powerpc/platforms/xenon/interrupt.c b/arch/powerpc/platforms/xenon/interrupt.c
+new file mode 100644
+index 000000000000..29a13238f8af
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/interrupt.c
+@@ -0,0 +1,376 @@
++/*
++ * Xenon interrupt controller,
++ *
++ * Maintained by: Felix Domke <tmbinc@elitedvb.net>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License v2
++ * as published by the Free Software Foundation.
++ */
++
++#include <linux/cpumask.h>
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/irqnr.h>
++#include <linux/module.h>
++#include <linux/percpu.h>
++#include <linux/types.h>
++#include <linux/ioport.h>
++#include <linux/irqdesc.h>
++#include <linux/irqdomain.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++
++#ifdef CONFIG_SMP
++#include <linux/smp.h>
++#endif
++
++#include <asm/io.h>
++#include <asm/pgtable.h>
++#include <asm/prom.h>
++#include <asm/ptrace.h>
++#include <asm/machdep.h>
++#include <asm/udbg.h>
++
++#include "interrupt.h"
++
++#define NO_IRQ (0)
++
++#define DEBUG
++#if defined(DEBUG)
++#define DBG udbg_printf
++#else
++#define DBG pr_debug
++#endif
++
++static void *iic_base, // 00050000
++	*bridge_base, // ea000000
++	*biu,         // e1000000
++	*graphics;    // ec800000
++static struct irq_domain *host;
++
++#define XENON_NR_IRQS 128
++
++#define PRIO_IPI_4       0x08
++#define PRIO_IPI_3       0x10
++#define PRIO_SMM         0x14
++#define PRIO_SFCX        0x18
++#define PRIO_SATA_HDD    0x20
++#define PRIO_SATA_CDROM  0x24
++#define PRIO_OHCI_0      0x2C
++#define PRIO_EHCI_0      0x30
++#define PRIO_OHCI_1      0x34
++#define PRIO_EHCI_1      0x38
++#define PRIO_XMA         0x40
++#define PRIO_AUDIO       0x44
++#define PRIO_ENET        0x4C
++#define PRIO_XPS         0x54
++#define PRIO_GRAPHICS    0x58
++#define PRIO_PROFILER    0x60
++#define PRIO_BIU         0x64
++#define PRIO_IOC         0x68
++#define PRIO_FSB         0x6C
++#define PRIO_IPI_2       0x70
++#define PRIO_CLOCK       0x74
++#define PRIO_IPI_1       0x78
++#define PRIO_NONE		 0x7C
++
++/*
++ * Important interrupt registers (per CPU):
++ *
++ * 0x00: CPU_WHOAMI
++ * 0x08: CPU_CURRENT_TASK_PRI: only receive interrupts higher than this
++ * 0x10: CPU_IPI_DISPATCH_0
++ * 0x18: unused(?)
++ * 0x20: ? (read changes)
++ * 0x28: ? (read changes)
++ * 0x30: ? (read changes)
++ * 0x38: same value as 0x20(?) (read changes)
++ * 0x40: unused(?)
++ * 0x48: unused(?)
++ * 0x50: ACK
++ * 0x58: ACK + set CPU_CURRENT_TASK_PRI
++ * 0x60: EOI
++ * 0x68: EOI + set CPU_CURRENT_TASK_PRI
++ * 0x70: interrupt MCACK? mask? max interrupt? CPU dies when writing stuff that isn't 0x7C
++ * 0xF0: ?
++ */
++
++/* CPU IRQ -> bridge (PCI) IRQ */
++static const int8_t xenon_pci_irq_map[] = {
++	/* 0x00             */ -1,
++	/* 0x04             */ -1,
++	/* PRIO_IPI_4       */ -1,
++	/* 0x0C             */ -1,
++	/* PRIO_IPI_3       */ -1,
++	/* PRIO_SMM         */ 3,
++	/* PRIO_SFCX        */ 13,
++	/* 0x1C             */ -1,
++	/* PRIO_SATA_HDD    */ 2,
++	/* PRIO_SATA_CDROM  */ 1,
++	/* 0x28             */ -1,
++	/* PRIO_OHCI_0      */ 4,
++	/* PRIO_EHCI_0      */ 5,
++	/* PRIO_OHCI_1      */ 6,
++	/* PRIO_EHCI_1      */ 7,
++	/* 0x3C             */ -1,
++	/* PRIO_XMA         */ 11,
++	/* PRIO_AUDIO       */ 12,
++	/* 0x48             */ -1,
++	/* PRIO_ENET        */ 10,
++	/* 0x50             */ -1,
++	/* PRIO_XPS         */ -1,
++	/* PRIO_GRAPHICS    */ -1,
++	/* 0x5C             */ -1,
++	/* PRIO_PROFILER    */ -1,
++	/* PRIO_BIU         */ -1,
++	/* PRIO_IOC         */ -1,
++	/* PRIO_FSB         */ -1,
++	/* PRIO_IPI_2       */ -1,
++	/* PRIO_CLOCK       */ 0,
++	/* PRIO_IPI_1       */ -1,
++	/* PRIO_NONE        */ -1,
++};
++
++static void disconnect_pci_irq(int prio)
++{
++	int i;
++
++	printk(KERN_INFO "xenon IIC: disconnect irq 0x%.2X\n", prio);
++
++	i = xenon_pci_irq_map[prio >> 2];
++	if (i != -1) {
++		writel(0, bridge_base + 0x10 + i * 4);
++	}
++}
++
++/* connects a PCI IRQ to a CPU */
++static void connect_pci_irq(int prio, int target_cpu)
++{
++	int8_t i;
++
++	printk(KERN_INFO "xenon IIC: connect irq 0x%.2X\n", prio);
++
++	i = xenon_pci_irq_map[prio >> 2];
++	if (i != -1) {
++		/*
++		 * Bits:
++		 * 0x00800000 = enable(?)
++		 * 0x00200000 = latched
++		 * 0x00003F00 = cpu target
++		 * 0x00000080 = level sensitive
++		 * 0x0000007F = CPU IRQ
++		 */
++		uint32_t bits = 0x00800080;
++		bits |= ((1 << target_cpu) & 0xFF) << 8;
++		bits |= (prio >> 2) & 0x3F;
++
++		writel(bits, bridge_base + 0x10 + i * 4);
++	}
++}
++
++static void iic_mask(struct irq_data *data)
++{
++	disconnect_pci_irq(data->hwirq);
++}
++
++static void iic_unmask(struct irq_data *data)
++{
++	connect_pci_irq(data->hwirq, 0);
++}
++
++static void xenon_ipi_send_mask(struct irq_data *data,
++				const struct cpumask *dest)
++{
++	int cpu = hard_smp_processor_id();
++	out_be64(iic_base + cpu * 0x1000 + 0x10,
++		 ((cpumask_bits(dest)[0] << 16) & 0x3F) | (data->hwirq & 0x7C));
++}
++
++static struct irq_chip xenon_pic = {
++	.name = " XENON-PIC ",
++	.irq_mask = iic_mask,
++	.irq_unmask = iic_unmask,
++	.ipi_send_mask = xenon_ipi_send_mask,
++	.flags = 0,
++};
++
++void xenon_init_irq_on_cpu(int cpu)
++{
++	printk(KERN_INFO "xenon IIC: init on cpu %i\n", cpu);
++
++	/* init that cpu's interrupt controller */
++	out_be64(iic_base + cpu * 0x1000 + 0x70, 0x7C);
++	out_be64(iic_base + cpu * 0x1000 + 0x08, 0); /* Set priority to 0 */
++	out_be64(iic_base + cpu * 0x1000, 1 << cpu); /* "who am i" */
++
++	/* read in and ack all outstanding interrupts */
++	while (in_be64(iic_base + cpu * 0x1000 + 0x50) != PRIO_NONE);
++	out_be64(iic_base + cpu * 0x1000 + 0x68, 0); /* EOI and set priority to 0 */
++}
++
++/* Get an IRQ number from the pending state register of the IIC */
++static unsigned int iic_get_irq(void)
++{
++	int cpu = hard_smp_processor_id();
++	void *my_iic_base;
++	int index;
++
++	my_iic_base = iic_base + cpu * 0x1000;
++
++	/* read destructive pending interrupt */
++	index = in_be64(my_iic_base + 0x50) & 0x7C;
++	out_be64(my_iic_base + 0x60, 0x0); /* EOI this interrupt. */
++
++	/* HACK: we will handle some (otherwise unhandled) interrupts here
++	   to prevent them flooding. */
++	switch (index) {
++	case PRIO_GRAPHICS:
++		writel(0, graphics + 0xed0);  // RBBM_INT_CNTL
++		writel(0, graphics + 0x6540); // R500_DxMODE_INT_MASK
++		break;
++	case PRIO_IOC:
++		writel(0, biu + 0x4002c);
++		break;
++	case PRIO_CLOCK:
++		writel(0, bridge_base + 0x106C);
++		break;
++	default:
++		break;
++	}
++
++	/* No interrupt. This really shouldn't happen. */
++	if (index == PRIO_NONE) {
++		return NO_IRQ;
++	}
++
++	return irq_find_mapping(host, index);
++}
++
++static int xenon_irq_host_map(struct irq_domain *h, unsigned int virq,
++				irq_hw_number_t hw)
++{
++	irq_set_chip_and_handler(virq, &xenon_pic, handle_percpu_irq);
++	return 0;
++}
++
++static int xenon_irq_host_match(struct irq_domain *h, struct device_node *node,
++				enum irq_domain_bus_token bus_token)
++{
++	return h->host_data != NULL && node == h->host_data;
++}
++
++static const struct irq_domain_ops xenon_irq_host_ops = {
++	.map = xenon_irq_host_map,
++	.match = xenon_irq_host_match,
++};
++
++void __init xenon_iic_init_IRQ(void)
++{
++	int i;
++	struct device_node *dn;
++	struct resource res;
++
++	printk(KERN_DEBUG "xenon IIC: init\n");
++			/* search for our interrupt controller inside the device tree */
++	for (dn = NULL;
++	     (dn = of_find_node_by_name(dn, "interrupt-controller")) != NULL;) {
++		if (!of_device_is_compatible(dn, "xenon"))
++			continue;
++
++		if (of_address_to_resource(dn, 0, &res))
++		{
++			printk(KERN_WARNING "xenon IIC: Can't resolve addresses\n");
++			of_node_put(dn);
++			return;
++		}
++
++		iic_base = ioremap(res.start, 0x10000);
++
++		host = irq_domain_add_linear(NULL, XENON_NR_IRQS, &xenon_irq_host_ops, NULL);
++		host->host_data = of_node_get(dn);
++		BUG_ON(host == NULL);
++		irq_set_default_domain(host);
++	}
++
++	ppc_md.get_irq = iic_get_irq;
++
++	bridge_base = ioremap(0xea000000, 0x10000);
++	biu = ioremap(0xe1000000, 0x2000000);
++	graphics = ioremap(0xec800000, 0x10000);
++
++		/* initialize interrupts */
++	writel(0, bridge_base);
++	writel(0x40000000, bridge_base + 4);
++
++	writel(0x40000000, biu + 0x40074);
++	writel(0xea000050, biu + 0x40078);
++
++	writel(0, bridge_base + 0xc);  /* Interrupt mask register */
++	writel(0x3, bridge_base);
++
++		/* disconnect all PCI IRQs until they are requested */
++	for (i=0; i<0x10; ++i)
++		writel(0, bridge_base + 0x10 + i * 4);
++
++	xenon_init_irq_on_cpu(0);
++}
++
++#ifdef CONFIG_SMP
++
++static int ipi_to_prio(int ipi)
++{
++	switch (ipi) {
++	case PPC_MSG_NMI_IPI:
++		return PRIO_IPI_1;
++		break;
++	case PPC_MSG_CALL_FUNCTION:
++		return PRIO_IPI_2;
++		break;
++	case PPC_MSG_RESCHEDULE:
++		return PRIO_IPI_3;
++		break;
++	case PPC_MSG_TICK_BROADCAST:
++		return PRIO_IPI_4;
++		break;
++	default:
++		printk("unhandled ipi %d\n", ipi);
++		BUG();
++	}
++	return 0;
++}
++
++void xenon_cause_IPI(int target_cpu, int msg)
++{
++	int ipi_prio;
++	int cpu = hard_smp_processor_id();
++
++	ipi_prio = ipi_to_prio(msg);
++	out_be64(iic_base + cpu * 0x1000 + 0x10, (0x10000 << target_cpu) | ipi_prio);
++}
++
++static void xenon_request_ipi(int ipi)
++{
++	int virq;
++	int prio = ipi_to_prio(ipi);
++
++	virq = irq_create_mapping(host, prio);
++	if (virq == NO_IRQ) {
++		printk(KERN_ERR "xenon_request_ipi: failed to map IPI%d (%s)\n",
++		       prio, smp_ipi_name[ipi]);
++		return;
++	}
++
++	if (smp_request_message_ipi(virq, ipi))
++		irq_dispose_mapping(virq);
++}
++
++void xenon_request_IPIs(void)
++{
++	xenon_request_ipi(PPC_MSG_TICK_BROADCAST);
++	xenon_request_ipi(PPC_MSG_CALL_FUNCTION);
++	xenon_request_ipi(PPC_MSG_RESCHEDULE);
++	xenon_request_ipi(PPC_MSG_NMI_IPI);
++}
++
++#endif
+diff --git a/arch/powerpc/platforms/xenon/interrupt.h b/arch/powerpc/platforms/xenon/interrupt.h
+new file mode 100644
+index 000000000000..9eed5dafe057
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/interrupt.h
+@@ -0,0 +1,9 @@
++#ifndef XENON_INTERRUPT_H
++#define XENON_INTERRUPT_H
++
++extern void xenon_init_irq_on_cpu(int cpu);
++extern void __init xenon_iic_init_IRQ(void);
++extern void xenon_cause_IPI(int target, int msg);
++extern void xenon_request_IPIs(void);
++
++#endif /* ASM_XENON_PIC_H */
+diff --git a/arch/powerpc/platforms/xenon/pci.c b/arch/powerpc/platforms/xenon/pci.c
+new file mode 100644
+index 000000000000..46f6f43da698
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/pci.c
+@@ -0,0 +1,145 @@
++/*
++ * Xenon PCI support
++ * Maintained by: Felix Domke <tmbinc@elitedvb.net>
++ * Minor modification by: wolie <wolie@telia.com>
++ * based on:
++ * Copyright (C) 2004 Benjamin Herrenschmuidt (benh@kernel.crashing.org),
++ *		      IBM Corp.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version
++ * 2 of the License, or (at your option) any later version.
++ */
++
++#include <linux/kernel.h>
++#include <linux/pci.h>
++#include <linux/pci-ecam.h>
++#include <linux/delay.h>
++#include <linux/string.h>
++#include <linux/init.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++
++#include <asm/sections.h>
++#include <asm/io.h>
++#include <asm/prom.h>
++#include <asm/pci-bridge.h>
++#include <asm/machdep.h>
++#include <asm/iommu.h>
++#include <asm/ppc-pci.h>
++
++#include <asm/dma-mapping.h>
++
++#include "pci.h"
++
++/* The Xenon's PCI controller supports modern ECAM PCIe configuration mechanism.
++ * Controllers like this are supposed to also support the legacy mechanism, so PPC Linux uses it,
++ * but if this one does, we don't know where it's mapped.
++ * Rough port of pci-ecam.c to confirm to the PowerPC PCI system.
++ */
++
++#define XENON_ECAM_MAXBUS 15
++
++static void __iomem *xenon_pci_ecam_map_bus(struct pci_bus *bus,
++					    unsigned int devfn, int where)
++{
++	unsigned int busn = bus->number;
++	unsigned int slot = PCI_SLOT(devfn);
++	unsigned int func = PCI_FUNC(devfn);
++
++	struct pci_controller *hose = pci_bus_to_host(bus);
++	if (hose == NULL)
++		return NULL;
++
++	if (busn < 0 || busn > 16)
++		return NULL;
++
++	// HACK to remap the GPU onto bus 1. Should remove once Bus 0 is working.
++	if (busn == 1 && slot == 15) {
++		busn = 0;
++		slot = 2;
++	}
++
++	return ((void __iomem *)hose->cfg_addr) +
++	       PCIE_ECAM_OFFSET(busn, PCI_DEVFN(slot, func), where);
++}
++
++static struct pci_ops xenon_pci_ops = {
++	.map_bus = xenon_pci_ecam_map_bus,
++	.read = pci_generic_config_read,
++	.write = pci_generic_config_write,
++};
++
++static int __init xenon_pci_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct device_node *dn = dev->of_node;
++
++	struct pci_controller *hose;
++	struct resource cfg_range;
++	u32 bus_range[2];
++	int err;
++
++	hose = pcibios_alloc_controller(dn);
++	if (hose == NULL) {
++		printk("pcibios_alloc_controller failed!\n");
++		return -ENOMEM;
++	}
++	hose->parent = &pdev->dev;
++
++	err = of_property_read_u32_array(dn, "bus-range", bus_range,
++					 ARRAY_SIZE(bus_range));
++	if (err) {
++		bus_range[0] = 0;
++		bus_range[1] = XENON_ECAM_MAXBUS;
++	}
++
++	/*
++	 * TODO: Bus 0 has a P2P bridge on it that appears to run bus 1 for us. Unfortunately,
++	 * I can't get Linux resource allocation to work with it.. It's outside my wheelhouse.
++	 * For now, treat Bus 1 as the root and hack the GPU onto bus 1.
++	 */
++	hose->first_busno = 1; //bus_range[0];
++	hose->last_busno = XENON_ECAM_MAXBUS; //bus_range[1];
++
++	// todo this should really come from the DT "reg" or "cfg"
++	cfg_range.name = "PCI ECAM";
++	cfg_range.start = 0xd0000000;
++	cfg_range.end = cfg_range.start + PCIE_ECAM_BUS(hose->last_busno + 1);
++	cfg_range.flags = IORESOURCE_MEM;
++
++	hose->cfg_addr = devm_ioremap_resource(dev, &cfg_range);
++	if (IS_ERR(hose->cfg_addr)) {
++		dev_err(dev, "Failed to map ECAM - %ld\n",
++			PTR_ERR(hose->cfg_addr));
++		return PTR_ERR(hose->cfg_addr);
++	}
++	hose->ops = &xenon_pci_ops;
++
++	pci_process_bridge_OF_ranges(hose, dn, 1);
++
++	dev_info(dev, "PCI initialized\n");
++	return 0;
++}
++
++void __init xenon_pci_init(void)
++{
++	int found = 0;
++	struct device_node *dn;
++	struct platform_device *pdev;
++
++	for_each_compatible_node(dn, "pci", "xenon") {
++		pdev = of_platform_device_create(dn, "xenon-pci", NULL);
++		xenon_pci_probe(pdev);
++		found++;
++	}
++	if (!found) {
++		pr_warn("No PCI found!\n");
++		return;
++	}
++
++	pr_info("Found %d instances\n", found);
++
++	return;
++}
+diff --git a/arch/powerpc/platforms/xenon/pci.h b/arch/powerpc/platforms/xenon/pci.h
+new file mode 100644
+index 000000000000..8161bce3ab29
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/pci.h
+@@ -0,0 +1,7 @@
++#ifndef XENON_PCI_H
++#define XENON_PCI_H
++
++extern void __init xenon_pci_init(void);
++extern void xenon_pcibios_fixup_bus(struct pci_bus *bus);
++
++#endif
+diff --git a/arch/powerpc/platforms/xenon/setup.c b/arch/powerpc/platforms/xenon/setup.c
+new file mode 100644
+index 000000000000..750f8b6bffd4
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/setup.c
+@@ -0,0 +1,160 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * arch/powerpc/platforms/xenon/xenon_setup.c
++ *
++ * Maintained by: Felix Domke <tmbinc@elitedvb.net>
++ * Minor modification by: wolie <wolie@telia.com>
++ * Minor modification by: Techflash <officialTechflashYT@gmail.com>
++ */
++
++#include <linux/kernel.h>
++#include <linux/delay.h>
++#include <linux/root_dev.h>
++#include <linux/console.h>
++#include <linux/kexec.h>
++#include <linux/of.h>
++#include <linux/seq_file.h>
++
++#include <xenon/smc-core.h>
++
++#include <asm/mmu.h>
++#include <asm/pci-bridge.h>
++#include <asm/ppc-pci.h>
++#include <asm/prom.h>
++#include <asm/sections.h>
++
++#include "interrupt.h"
++#include "pci.h"
++#include "smp.h"
++#include "udbg.h"
++
++static int xenon_early_init(void)
++{
++	// xenon_smc_early_led(0x01, 0x60);
++	printk("%s\n", __func__);
++	return 0;
++}
++machine_early_initcall(xenon, xenon_early_init);
++
++static void xenon_show_cpuinfo(struct seq_file *m)
++{
++	struct device_node *root;
++	const char *model = "";
++
++	root = of_find_node_by_path("/");
++	if (root)
++		model = of_get_property(root, "model", NULL);
++	seq_printf(m, "machine\t\t: %s\n", model);
++	of_node_put(root);
++}
++
++static void __init xenon_init_irq(void)
++{
++	xenon_iic_init_IRQ();
++}
++
++static void __init xenon_setup_arch(void)
++{
++#ifdef CONFIG_SMP
++	smp_init_xenon();
++#endif
++		/* init to some ~sane value until calibrate_delay() runs */
++	loops_per_jiffy = 50000000;
++
++	if (ROOT_DEV == 0)
++		ROOT_DEV = MKDEV(SCSI_DISK0_MAJOR, 1); // No mention of it being removed in root_dev.h? Why??
++
++#ifdef CONFIG_DUMMY_CONSOLE
++	conswitchp = &dummy_con;
++#endif
++}
++
++static void xenon_panic(char *str)
++{
++	// show a red ring
++	unsigned char msg[16] = {0x99, 0x01, 0x0F, 0};
++	xenon_smc_message(msg);
++
++	smp_send_stop();
++	printk("\n");
++	printk("   System does not reboot automatically.\n");
++	printk("   Please press POWER button.\n");
++	printk("\n");
++
++	local_irq_disable();
++	while (1);
++}
++
++static void __noreturn xenon_restart(char *cmd)
++{
++	printk("   System restart ... \n");
++
++	smp_send_stop();
++	xenon_smc_restart();
++
++	local_irq_disable();
++	while (1);
++}
++
++static void xenon_power_off(void)
++{
++	printk("   System power off ... \n");
++
++	smp_send_stop();
++	xenon_smc_power_off();
++
++	local_irq_disable();
++	while (1);
++}
++
++static void __noreturn xenon_halt(void)
++{
++	printk("   System halt ... \n");
++
++	smp_send_stop();
++	xenon_smc_halt();
++
++	local_irq_disable();
++	while (1);
++}
++
++static int __init xenon_probe(void)
++{
++	if (!of_machine_is_compatible("XENON")) {
++		return 0;
++	}
++
++#ifdef CONFIG_PPC_EARLY_DEBUG_XENON
++	udbg_init_xenon_virtual();
++#endif
++
++	hpte_init_native();
++	pm_power_off = xenon_power_off;
++
++	return 1;
++}
++
++#if 0
++static int xenon_check_legacy_ioport(unsigned int baseport)
++{
++	return -ENODEV;
++}
++#endif
++
++define_machine(xenon) {
++	.name			= "Xenon",
++	.probe			= xenon_probe,
++	.setup_arch		= xenon_setup_arch,
++	.discover_phbs		= xenon_pci_init,
++	.show_cpuinfo	= xenon_show_cpuinfo,
++	.calibrate_decr	= generic_calibrate_decr,
++	.init_IRQ       = xenon_init_irq,
++	.panic			= xenon_panic,
++	.restart		= xenon_restart,
++	.halt			= xenon_halt,
++#if 0 && defined(CONFIG_KEXEC)
++	.machine_kexec		= default_machine_kexec,
++	.machine_kexec_prepare	= default_machine_kexec_prepare,
++	.machine_crash_shutdown	= default_machine_crash_shutdown,
++#endif
++};
+diff --git a/arch/powerpc/platforms/xenon/smp.c b/arch/powerpc/platforms/xenon/smp.c
+new file mode 100644
+index 000000000000..3416c5f66447
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/smp.c
+@@ -0,0 +1,81 @@
++/*
++ * SMP support for Xenon machines.
++ *
++ * Based on CBE's smp.c.
++ *
++ *      This program is free software; you can redistribute it and/or
++ *      modify it under the terms of the GNU General Public License
++ *      as published by the Free Software Foundation; either version
++ *      2 of the License, or (at your option) any later version.
++ */
++
++#include <linux/kernel.h>
++#include <linux/cpu.h>
++#include <linux/module.h>
++
++#include <asm/machdep.h>
++#include <asm/smp.h>
++#include <asm/udbg.h>
++
++#include "interrupt.h"
++
++#define DEBUG
++#if defined(DEBUG)
++#define DBG udbg_printf
++#else
++#define DBG pr_debug
++#endif
++
++extern int boot_cpuid;
++
++static void __init smp_xenon_probe(void)
++{
++	xenon_request_IPIs();
++}
++
++static void smp_xenon_setup_cpu(int cpu)
++{
++	/* Boot CPU IRQs are already initialized at this point in
++	 * xenon_iic_init_IRQ */
++	if (cpu != boot_cpuid)
++		xenon_init_irq_on_cpu(cpu);
++}
++
++static int smp_xenon_cpu_bootable(unsigned int nr)
++{
++	/* Special case - we inhibit secondary thread startup
++	 * during boot if the user requests it.  Odd-numbered
++	 * cpus are assumed to be secondary threads.
++	 */
++	if (system_state < SYSTEM_RUNNING && cpu_has_feature(CPU_FTR_SMT)
++	    && !smt_enabled_at_boot && nr % 2 != 0)
++		return 0;
++
++	return 1;
++}
++
++static void smp_xenon_message_pass(int cpu, int msg)
++{
++	xenon_cause_IPI(cpu, msg);
++}
++
++static struct smp_ops_t xenon_smp_ops = {
++	.probe = smp_xenon_probe,
++	.message_pass = smp_xenon_message_pass,
++#ifdef CONFIG_HOTPLUG_CPU
++	.cpu_die = generic_cpu_die,
++#endif
++	.kick_cpu = smp_generic_kick_cpu,
++	.setup_cpu = smp_xenon_setup_cpu,
++	.cpu_bootable = smp_xenon_cpu_bootable,
++};
++
++/* This is called very early */
++void __init smp_init_xenon(void)
++{
++	pr_debug(" -> smp_init_xenon()\n");
++
++	smp_ops = &xenon_smp_ops;
++
++	pr_debug(" <- smp_init_xenon()\n");
++}
+diff --git a/arch/powerpc/platforms/xenon/smp.h b/arch/powerpc/platforms/xenon/smp.h
+new file mode 100644
+index 000000000000..900af84ae58d
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/smp.h
+@@ -0,0 +1,8 @@
++#ifndef XENON_SMP_H
++#define XENON_SMP_H
++
++#ifdef CONFIG_SMP
++extern void smp_init_xenon(void);
++#endif
++
++#endif
+diff --git a/arch/powerpc/platforms/xenon/time.c b/arch/powerpc/platforms/xenon/time.c
+new file mode 100644
+index 000000000000..247079ec3c8d
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/time.c
+@@ -0,0 +1,36 @@
++/*
++ *  Xenon time and rtc routines.
++ *
++ *  Copyright (C) 2010 Herbert Poetzl
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; version 2 of the License.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/rtc.h>
++
++static int __init xenon_rtc_init(void)
++{
++	struct platform_device *pdev;
++
++	pdev = platform_device_register_simple("rtc-xenon", -1, NULL, 0);
++	if (IS_ERR(pdev))
++		return PTR_ERR(pdev);
++
++	return 0;
++}
++
++module_init(xenon_rtc_init);
+\ No newline at end of file
+diff --git a/arch/powerpc/platforms/xenon/udbg.h b/arch/powerpc/platforms/xenon/udbg.h
+new file mode 100644
+index 000000000000..2c21f14f711d
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/udbg.h
+@@ -0,0 +1,23 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * arch/powerpc/platforms/xenon/udbg.h
++ *
++ * Copyright (C) 2025 Techflash <officialTechflashYT@gmail.com>
++ */
++
++#ifndef __XENON_UDBG_H
++#define __XENON_UDBG_H
++
++#ifdef CONFIG_PPC_EARLY_DEBUG_XENON
++
++extern void __init udbg_init_xenon_virtual(void);
++
++#else
++
++static inline void __init udbg_init_xenon_virtual(void)
++{
++}
++
++#endif /* CONFIG_PPC_EARLY_DEBUG_XENON */
++
++#endif /* __XENON_UDBG_H */
+diff --git a/arch/powerpc/platforms/xenon/xe_udbg.c b/arch/powerpc/platforms/xenon/xe_udbg.c
+new file mode 100644
+index 000000000000..e1a12b3e0b79
+--- /dev/null
++++ b/arch/powerpc/platforms/xenon/xe_udbg.c
+@@ -0,0 +1,164 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * xe_udbg.c: Early debug console via framebuffer
++ *
++ * Copyright 2017 Justin Moore
++ */
++
++#include <linux/bug.h>
++#include <linux/delay.h>
++#include <linux/font.h>
++#include <linux/slab.h>
++
++#include <asm/cacheflush.h>
++#include <asm/fixmap.h>
++#include <asm/io.h>
++#include <asm/page.h>
++#include <asm/prom.h>
++#include <asm/udbg.h>
++
++#include "udbg.h"
++
++// ========================================================================
++// ========================================================================
++
++typedef struct console_context {
++  void __iomem *fb;
++  uint32_t width;
++  uint32_t height;
++
++  uint32_t cursor_x;
++  uint32_t cursor_y;
++} console_context_t;
++static console_context_t console_ctx;
++
++static void console_clrscr(console_context_t *context) {
++  unsigned int *fb = (unsigned int *)context->fb;
++  int count = context->width * context->height;
++  while (count--) out_be32(fb++, 0x00000000);
++
++  context->cursor_x = 0;
++  context->cursor_y = 0;
++}
++
++/* set a pixel to RGB values, must call console_init() first */
++static inline void console_pset32(console_context_t *context, int x, int y,
++                                  int color) {
++  uint32_t *fb = ((uint32_t *)context->fb);
++#define base                                                            \
++  (((y >> 5) * 32 * context->width + ((x >> 5) << 10) + (x & 3) +       \
++    ((y & 1) << 2) + (((x & 31) >> 2) << 3) + (((y & 31) >> 1) << 6)) ^ \
++   ((y & 8) << 2))
++  fb[base] = color;
++#undef base
++}
++
++static inline void console_pset(console_context_t *context, int x, int y,
++                                unsigned char r, unsigned char g,
++                                unsigned char b) {
++  console_pset32(context, x, y, (b << 24) + (g << 16) + (r << 8));
++}
++
++static void console_draw_char(console_context_t *context,
++                              const uint8_t *fontdata_8x16, const int x,
++                              const int y, const unsigned char c) {
++#define font_pixel(ch, x, y) ((fontdata_8x16[ch * 16 + y] >> (7 - x)) & 1)
++  int lx, ly;
++  for (ly = 0; ly < 16; ly++) {
++    for (lx = 0; lx < 8; lx++) {
++      console_pset32(context, x + lx, y + ly,
++                     font_pixel(c, lx, ly) == 1 ? 0xFFFFFF00 : 0x00000000);
++    }
++  }
++#undef font_pixel
++}
++
++static void console_scroll32(console_context_t *context,
++                             const unsigned int lines) {
++  int l, bs;
++  uint32_t *fb, *end;
++  uint32_t console_size = context->width * context->height;
++
++  bs = context->width * 32 * 4;
++  // copy all tile blocks to a higher position
++  for (l = lines; l * 32 < context->height; l++) {
++    memcpy(context->fb + bs * (l - lines), context->fb + bs * l, bs);
++  }
++
++  // fill up last lines with background color
++  fb = (uint32_t *)(context->fb + console_size * 4 - bs * lines);
++  end = (uint32_t *)(context->fb + console_size * 4);
++  memset(fb, 0x00000000, (end - fb) * 4);
++}
++
++static void console_newline(console_context_t *context) {
++  /* reset to the left and flush line */
++  context->cursor_x = 0;
++  context->cursor_y++;
++
++  if (context->cursor_y >= ((context->height - 32) / 16)) {
++    console_scroll32(context, 1);
++    context->cursor_y -= 2;
++  }
++}
++
++static void console_putch(const char c) {
++  if (!console_ctx.fb) return;
++
++  if (c == '\r') {
++    console_ctx.cursor_x = 0;
++  } else if (c == '\n') {
++    console_newline(&console_ctx);
++  } else {
++    console_draw_char(&console_ctx, font_vga_8x16.data,
++                      console_ctx.cursor_x * 8 + 32,
++                      console_ctx.cursor_y * 16 + 32, c);
++    console_ctx.cursor_x++;
++    if (console_ctx.cursor_x >= (console_ctx.width - 32) / 8)
++      console_newline(&console_ctx);
++  }
++}
++
++// ========================================================================
++// ========================================================================
++
++void __init udbg_init_xenon(void) {
++  /*
++   * 148x41
++   * Since we're running in real mode now, we can't enable logging until
++   * we reach virtual mode. Just set up our structure and clear the
++   * screen. This depends on XeLL running before us, and it having already
++   * set up the screen.
++   */
++  memset(&console_ctx, 0, sizeof(console_context_t));
++  console_ctx.fb = (void *)0x1E000000ull;
++  console_ctx.width = ((1280 + 31) >> 5) << 5;
++  console_ctx.height = ((720 + 31) >> 5) << 5;
++  console_clrscr(&console_ctx);
++  // udbg_putc = console_putch;
++}
++
++void __init udbg_init_xenon_virtual(void) {
++  void __iomem *framebuffer = ioremap(0x1E000000, 0x01FFFFFF);
++  if (framebuffer) {
++    console_ctx.fb = framebuffer;
++    udbg_putc = console_putch;
++  }
++}
++
++/* doesn't seem to actually get used? */
++#if 0
++void udbg_shutdown_xenon(void) {
++  if (console_ctx.fb) {
++    // cannot iounmap early bolted memory
++    // iounmap(console_ctx.fb);
++    console_ctx.fb = NULL;
++  }
++
++  if (udbg_putc == NULL) {
++    return;
++  }
++
++  udbg_putc = NULL;
++}
++#endif
+diff --git a/drivers/Makefile b/drivers/Makefile
+index b5749cf67044..1fd6aa5b2515 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -142,6 +142,7 @@ obj-y				+= clocksource/
+ obj-$(CONFIG_DCA)		+= dca/
+ obj-$(CONFIG_HID_SUPPORT)	+= hid/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
++obj-$(CONFIG_PPC_XENON)		+= xenon/
+ obj-$(CONFIG_OF)		+= of/
+ obj-$(CONFIG_SSB)		+= ssb/
+ obj-$(CONFIG_BCMA)		+= bcma/
+diff --git a/drivers/ata/Kconfig b/drivers/ata/Kconfig
+index 120a2b7067fc..1bc88c37c70f 100644
+--- a/drivers/ata/Kconfig
++++ b/drivers/ata/Kconfig
+@@ -541,6 +541,14 @@ config SATA_SVW
+ 
+ 	  If unsure, say N.
+ 
++config SATA_XENON
++	tristate "Xenon SATA support"
++	depends on PCI
++	help
++	  This option enables support for Xenon southbridge.
++
++	  If unsure, say N.
++
+ config SATA_ULI
+ 	tristate "ULi Electronics SATA support"
+ 	depends on PCI
+diff --git a/drivers/ata/Makefile b/drivers/ata/Makefile
+index 20e6645ab737..6685239fdbd3 100644
+--- a/drivers/ata/Makefile
++++ b/drivers/ata/Makefile
+@@ -13,6 +13,7 @@ obj-$(CONFIG_SATA_INIC162X)	+= sata_inic162x.o
+ obj-$(CONFIG_SATA_SIL24)	+= sata_sil24.o
+ obj-$(CONFIG_SATA_DWC)		+= sata_dwc_460ex.o
+ obj-$(CONFIG_SATA_HIGHBANK)	+= sata_highbank.o libahci.o
++obj-$(CONFIG_SATA_XENON)    += sata_xenon.o
+ obj-$(CONFIG_AHCI_BRCM)		+= ahci_brcm.o libahci.o libahci_platform.o
+ obj-$(CONFIG_AHCI_CEVA)		+= ahci_ceva.o libahci.o libahci_platform.o
+ obj-$(CONFIG_AHCI_DA850)	+= ahci_da850.o libahci.o libahci_platform.o
+diff --git a/drivers/ata/sata_xenon.c b/drivers/ata/sata_xenon.c
+new file mode 100644
+index 000000000000..7c9c247bb645
+--- /dev/null
++++ b/drivers/ata/sata_xenon.c
+@@ -0,0 +1,251 @@
++/*
++ *  sata_xenon.c - SATA support for xenon southbridge
++ *
++ *  based on sata_sis.c, modifications by Felix Domke <tmbinc@elitedvb.net>
++ *  minor modification by: wolie <wolie@telia.com>
++ *
++ *  		    Please ALWAYS copy linux-ide@vger.kernel.org
++ *		    on emails.
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *
++ *
++ *  libata documentation is available via 'make {ps|pdf}docs',
++ *  as Documentation/DocBook/libata.*
++ *
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/pci.h>
++#include <linux/init.h>
++#include <linux/blkdev.h>
++#include <linux/delay.h>
++#include <linux/interrupt.h>
++#include <linux/device.h>
++#include <scsi/scsi_host.h>
++#include <linux/libata.h>
++
++#define DRV_NAME	"sata_xenon"
++#define DRV_VERSION	"0.1.1"
++
++	/* small note: it's completely unknown whether the xenon southbridge sata
++	   is really based on SiS technology.
++	   Most of SATA is standardized anyway.
++
++
++	   So, we have these two pci devices, one for each port.
++
++	   They have two BARs, one for the IDE registers (0..7,
++	   altstatus/devctl is +0xA), and one for the BMDMA.
++
++	   SCR seem to be sis-like in pci config space, but that should
++	   be verified!
++
++	   Note on the DVD-ROM part:
++
++	   The drives usually require some tweaks to be usable under linux.
++
++	   You either need to hack the scsi layer, or, in case of the GDR3120L,
++	   set 'modeB' in the bootloader.
++	*/
++
++enum {
++	/* PCI configuration registers */
++	SIS_SCR_BASE		= 0xc0, /* sata0 phy SCR registers */
++};
++
++static int xenon_init_one (struct pci_dev *pdev, const struct pci_device_id *ent);
++static int xenon_scr_read (struct ata_link *link, unsigned int sc_reg, u32 *val);
++static int xenon_scr_write (struct ata_link *link, unsigned int sc_reg, u32 val);//void
++static void xenon_bmdma_error_handler(struct ata_port *ap);
++
++static const struct pci_device_id xenon_pci_tbl[] = {
++	{ PCI_VDEVICE(MICROSOFT, 0x5803), 0 }, // Hdd
++	{ PCI_VDEVICE(MICROSOFT, 0x5802), 0 }, // CdDvd
++
++	{ }	/* terminate list */
++};
++
++static struct pci_driver xenon_pci_driver = {
++	.name			= DRV_NAME,
++	.id_table		= xenon_pci_tbl,
++	.probe			= xenon_init_one,
++	.remove			= ata_pci_remove_one,
++};
++
++static struct scsi_host_template xenon_sht = {
++	ATA_BMDMA_SHT(DRV_NAME),
++};
++
++static struct ata_port_operations xenon_ops = {
++	.inherits		= &ata_bmdma_port_ops,
++// 	.lost_interrupt		= ATA_OP_NULL,
++//	.error_handler		= xenon_bmdma_error_handler,
++	.scr_read		= xenon_scr_read,
++	.scr_write		= xenon_scr_write,
++};
++
++static const struct ata_port_info xenon_port_info = {
++	.flags		= ATA_FLAG_SATA,
++	.pio_mask	= ATA_PIO4,
++	.mwdma_mask	= ATA_MWDMA2,
++	.udma_mask	= ATA_UDMA6, //0x7F
++	.port_ops	= &xenon_ops,
++//	.irq_handler	= ata_interrupt,
++//	.private_data   = NULL
++};
++
++static unsigned int get_scr_cfg_addr(unsigned int sc_reg)
++{
++	if ((sc_reg > SCR_CONTROL) || (sc_reg == SCR_ERROR)) /* doesn't exist in PCI cfg space */
++		return -1;
++
++	return SIS_SCR_BASE + (4 * sc_reg);
++
++}
++
++static int xenon_scr_read (struct ata_link *link, unsigned int sc_reg, u32 *val) //u32
++{
++	struct pci_dev *pdev = to_pci_dev(link->ap->host->dev);
++	unsigned int cfg_addr;
++
++	cfg_addr = get_scr_cfg_addr(sc_reg);
++
++	if (cfg_addr == -1)
++		return -EINVAL;
++
++	pci_read_config_dword(pdev, cfg_addr, val);
++	return 0;
++}
++
++static int xenon_scr_write (struct ata_link *link, unsigned int sc_reg, u32 val) //void
++{
++	struct pci_dev *pdev = to_pci_dev(link->ap->host->dev);
++	unsigned int cfg_addr;
++
++	cfg_addr = get_scr_cfg_addr(sc_reg);
++
++	if (cfg_addr == -1)
++		return -EINVAL;
++
++	pci_write_config_dword(pdev, cfg_addr, val);
++	return 0;
++}
++
++static int xenon_softreset(struct ata_link *link, unsigned int *classes, unsigned long deadline)
++{
++	struct ata_port *ap = link->ap;
++	struct pci_dev *pdev = to_pci_dev(ap->host->dev);
++		/* Host 0 (used for DVD-ROM) has a quirk when used with
++		   an Toshiba/Samsung drive: It can hang after a device reset.
++
++		   While the exact reason is unclear (anyone with a SATA port
++		   analyzer?), this workaround will not let the reset happen, and
++		   emulate the detection of an ATAPI device.
++
++		   When the workaround is enabled, only ATAPI devices are supported
++		   on host 0, but on this hardware, nothing else is possible anyway. */
++	if (pdev->device == 0x5802)
++	{
++		classes[0] = ATA_DEV_ATAPI;
++		classes[1] = ATA_DEV_NONE;
++		printk(KERN_WARNING "Simulating reset of SATA device 0x5802\n");
++		return -EIO;
++	} else {
++		return ata_sff_softreset(link, classes, deadline);
++	}
++}
++
++static void xenon_bmdma_error_handler(struct ata_port *ap)
++{
++	ata_std_error_handler(ap);
++}
++
++
++static int xenon_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
++{
++	static int printed_version;
++	struct ata_host *host;
++	struct ata_ioports *ioaddr;
++	struct ata_port_info pi = xenon_port_info;
++	const struct ata_port_info *ppi[] = { &pi, NULL };
++	int rc;
++
++	if (!printed_version++)
++		dev_printk(KERN_INFO, &pdev->dev, "version " DRV_VERSION "\n");
++
++	rc = pci_enable_device(pdev);
++	if (rc)
++		return rc;
++
++	rc = pci_request_regions(pdev, DRV_NAME);
++	if (rc) {
++		goto err_out;
++	}
++
++	rc = dma_set_mask(&pdev->dev, ATA_DMA_MASK);
++	if (rc)
++		goto err_out_regions;
++
++	rc = dma_set_coherent_mask(&pdev->dev, ATA_DMA_MASK);
++	if (rc)
++		goto err_out_regions;
++
++	host = ata_host_alloc_pinfo(&pdev->dev, ppi, 1);
++	if (!host) {
++		rc = -ENOMEM;
++		goto err_out_regions;
++	}
++
++	ioaddr = &host->ports[0]->ioaddr;
++	ioaddr->cmd_addr = ioremap(pci_resource_start(pdev, 0), PAGE_SIZE);
++	ioaddr->altstatus_addr = ioaddr->cmd_addr + 0xa;
++	ioaddr->ctl_addr = ioaddr->cmd_addr + 0xa;
++	ioaddr->bmdma_addr = ioremap(pci_resource_start(pdev, 1), PAGE_SIZE);
++
++	ata_sff_std_ports(ioaddr);
++
++	pci_set_master(pdev);
++	pci_intx(pdev, 1);
++
++	return ata_host_activate(host, pdev->irq, ata_sff_interrupt,
++				 IRQF_SHARED, &xenon_sht);
++
++err_out_regions:
++	pci_release_regions(pdev);
++
++err_out:
++	pci_disable_device(pdev);
++	return rc;
++}
++
++static int __init xenon_init(void)
++{
++	return pci_register_driver(&xenon_pci_driver);
++}
++
++static void __exit xenon_exit(void)
++{
++	pci_unregister_driver(&xenon_pci_driver);
++}
++
++module_init(xenon_init);
++module_exit(xenon_exit);
++
++MODULE_DESCRIPTION("low-level driver for Xenon Southbridge SATA controller");
++MODULE_LICENSE("GPL");
++MODULE_DEVICE_TABLE(pci, xenon_pci_tbl);
++MODULE_VERSION(DRV_VERSION);
+diff --git a/drivers/char/Kconfig b/drivers/char/Kconfig
+index d2cfc584e202..f4d0a2172f70 100644
+--- a/drivers/char/Kconfig
++++ b/drivers/char/Kconfig
+@@ -7,6 +7,32 @@ menu "Character devices"
+ 
+ source "drivers/tty/Kconfig"
+ 
++config XENON_SMC
++	tristate "Xenon System Management Controller (SMC)"
++	depends on PPC_XENON
++	help
++	  Character interface to the System Management controller in the
++	  Xbox 360. Allows to send arbitrary SMC commands and receive
++	  SMC replies.
++
++config XENON_ANA
++	tristate "Xenon (H)ana Character Device"
++	depends on PPC_XENON
++	help
++	  Character interface to the (H)ana chip on the Xbox 360.
++
++config XENON_PROBE
++	tristate "Xenon Memory Probe Device"
++	depends on PPC_XENON && EXPERIMENTAL
++	help
++	  Character interface to do memory probing on the Xbox 360.
++
++config XENOS_RB
++	tristate "Xenos Ring Buffer Device"
++	depends on PPC_XENON && HAS_DMA
++	help
++	  Character device supporting raw ringbuffer writes to the Xenos.
++
+ config TTY_PRINTK
+ 	tristate "TTY driver to output user messages via printk"
+ 	depends on EXPERT && TTY
+diff --git a/drivers/char/Makefile b/drivers/char/Makefile
+index e9b360cdc99a..00c88a2daac3 100644
+--- a/drivers/char/Makefile
++++ b/drivers/char/Makefile
+@@ -10,6 +10,10 @@ obj-$(CONFIG_ATARI_DSP56K)	+= dsp56k.o
+ obj-$(CONFIG_VIRTIO_CONSOLE)	+= virtio_console.o
+ obj-$(CONFIG_UV_MMTIMER)	+= uv_mmtimer.o
+ obj-$(CONFIG_IBM_BSR)		+= bsr.o
++obj-$(CONFIG_XENON_SMC)		+= xenon_smc.o
++obj-$(CONFIG_XENON_ANA)		+= xenon_ana.o
++obj-$(CONFIG_XENON_PROBE)	+= xenon_probe.o
++obj-$(CONFIG_XENOS_RB)		+= xenos_rb.o
+ 
+ obj-$(CONFIG_PRINTER)		+= lp.o
+ 
+diff --git a/drivers/char/xenon_ana.c b/drivers/char/xenon_ana.c
+new file mode 100644
+index 000000000000..16d8a130f8a6
+--- /dev/null
++++ b/drivers/char/xenon_ana.c
+@@ -0,0 +1,197 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ *  Xenon (H)ana via SMC character driver.
++ *
++ *  Copyright (C) 2010 Herbert Poetzl
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/miscdevice.h>
++#include <linux/fs.h>
++#include <linux/uaccess.h>
++
++#include <xenon/smc-core.h>
++
++#define DRV_NAME	"xenon_ana"
++#define DRV_VERSION	"0.2"
++
++
++static uint32_t ana_read_reg(uint8_t addr)
++{
++	unsigned char msg[16] = { 0x11,
++		0x10, 0x05, 0x80 | 0x70, 0x00, 0xF0, addr };
++
++	xenon_smc_message_wait(msg);
++	return msg[4] | (msg[5] << 8) | (msg[6] << 16) | (msg[7] << 24);
++}
++
++static int ana_write_reg(uint8_t addr, uint32_t val)
++{
++	unsigned char msg[16] = { 0x11,
++		0x60, 0x00, 0x80 | 0x70, 0x00, 0x00,
++		addr, 0x00, val & 0xFF, (val >> 8) & 0xFF,
++		(val >> 16) & 0xFF, (val >> 24) & 0xFF };
++
++	xenon_smc_message_wait(msg);
++	return msg[1];
++}
++
++static loff_t ana_llseek(struct file *file, loff_t offset, int origin)
++{
++	switch (origin) {
++	case 1:
++		offset += file->f_pos;
++		break;
++	case 2:
++		offset += 0x400;
++		break;
++	}
++	if (offset < 0)
++		return -EINVAL;
++
++	file->f_pos = offset;
++	return file->f_pos;
++}
++
++typedef union {
++	uint32_t val;
++	uint8_t p[4];
++} 	ana_reg_t;
++
++static ssize_t ana_read(struct file *file, char __user *buf,
++	size_t count, loff_t *ppos)
++{
++	uint32_t ppa = *ppos;
++
++	if (*ppos >= 0x400UL)
++		return -EINVAL;
++
++	while (count) {
++		/* optimize reads in same reg */
++		int addr = ppa/4;
++		int shift = ppa % 4;
++		ana_reg_t r = { .val = ana_read_reg(addr) };
++
++		int len = 4 - shift;
++
++		if (len > count)
++			len = count;
++		if (copy_to_user(buf, &r.p[shift], len))
++			return -EFAULT;
++
++		count -= len;
++		buf += len;
++		ppa += len;
++
++		/* end of register space? */
++		if (ppa >= 0x400)
++			break;
++	}
++
++	/* how much data was actually transferred? */
++	count = ppa - *ppos;
++	*ppos = ppa;
++	return count;
++}
++
++static ssize_t ana_write(struct file *file, const char __user *buf,
++	size_t count, loff_t *ppos)
++{
++	uint32_t ppa = *ppos;
++
++	if (*ppos >= 0x400UL)
++		return -EINVAL;
++
++	while (count) {
++		/* coalesce writes to same reg */
++		int addr = ppa/4;
++		int shift = ppa % 4;
++		ana_reg_t r;
++
++		int len = 4 - shift;
++
++		if (len > count)
++			len = count;
++
++		/* handle partial write */
++		if (len != 4)
++			r.val = ana_read_reg(addr);
++
++		if (copy_from_user(&r.p[shift], buf, len))
++			return -EFAULT;
++
++		/* FIXME: handle return code */
++		ana_write_reg(addr, r.val);
++
++		count -= len;
++		buf += len;
++		ppa += len;
++
++		/* end of register space? */
++		if (ppa >= 0x400)
++			break;
++	}
++
++	/* how much data was actually transferred? */
++	count = ppa - *ppos;
++	*ppos = ppa;
++	return count;
++}
++
++static long ana_ioctl(struct file *file,
++	unsigned int cmd, unsigned long arg)
++{
++	return -ENODEV;
++}
++
++static int ana_open(struct inode *inode, struct file *file)
++{
++	return nonseekable_open(inode, file);
++}
++
++static int ana_release(struct inode *inode, struct file *file)
++{
++	return 0;
++}
++
++
++const struct file_operations ana_fops = {
++	.owner		= THIS_MODULE,
++	.llseek		= ana_llseek,
++	.read		= ana_read,
++	.write		= ana_write,
++	.unlocked_ioctl	= ana_ioctl,
++	.open		= ana_open,
++	.release	= ana_release,
++};
++
++static struct miscdevice ana_dev = {
++	.minor =  MISC_DYNAMIC_MINOR,
++	"ana",
++	&ana_fops
++};
++
++int __init ana_init(void)
++{
++	int ret = 0;
++
++	printk(KERN_INFO "Xenon (H)ana char driver version " DRV_VERSION "\n");
++
++	ret = misc_register(&ana_dev);
++	return ret;
++}
++
++void __exit ana_exit(void)
++{
++	misc_deregister(&ana_dev);
++}
++
++module_init(ana_init);
++module_exit(ana_exit);
++
++MODULE_AUTHOR("Herbert Poetzl <herbert@13thfloor.at>");
++MODULE_DESCRIPTION("Character Interface for Xenon (H)ana");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
+diff --git a/drivers/char/xenon_probe.c b/drivers/char/xenon_probe.c
+new file mode 100644
+index 000000000000..f91587c62fc2
+--- /dev/null
++++ b/drivers/char/xenon_probe.c
+@@ -0,0 +1,228 @@
++/*
++ *  Xenon Memory Probe character driver.
++ *
++ *  Copyright (C) 2010 Herbert Poetzl
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; version 2 of the License.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/miscdevice.h>
++#include <linux/fs.h>
++#include <asm/uaccess.h>
++#include <asm/io.h>
++
++#define DRV_NAME	"xenon_probe"
++#define DRV_VERSION	"0.1"
++
++static unsigned long base = 0xc8000000;
++static unsigned long size = 0x10000;
++static bool little_endian = 0;
++
++module_param(base, ulong, 0);
++MODULE_PARM_DESC(base, "Probe Memory Base");
++
++module_param(size, ulong, 0);
++MODULE_PARM_DESC(size, "Probe Memory Size");
++
++module_param(little_endian, bool, 0);
++MODULE_PARM_DESC(little_endian, "Probe Memory Endianess");
++
++static void __iomem *mapped = NULL;
++
++
++static uint32_t probe_map(uint32_t val)
++{
++	if (little_endian)
++		return le32_to_cpu(val);
++	else
++		return be32_to_cpu(val);
++}
++
++static uint32_t probe_rmap(uint32_t val)
++{
++	if (little_endian)
++		return cpu_to_le32(val);
++	else
++		return cpu_to_be32(val);
++}
++
++
++static loff_t probe_llseek(struct file *file, loff_t offset, int origin)
++{
++	switch (origin) {
++	case 1:
++		offset += file->f_pos;
++		break;
++	case 2:
++		offset += size;
++		break;
++	}
++	if ((offset < 0) || (offset >= size))
++		return -EINVAL;
++
++	file->f_pos = offset;
++	return file->f_pos;
++}
++
++typedef union {
++	uint32_t val;
++	uint8_t p[4];
++} 	probe_mem_t;
++
++static ssize_t probe_read(struct file *file,
++	char __user *buf, size_t count, loff_t *ppos)
++{
++	uint32_t ppa = *ppos;
++
++	if (*ppos >= size)
++		return -EINVAL;
++
++	printk("probe_read(%x,%zx)\n", ppa, count);
++	while (count) {
++		/* optimize reads in same longword */
++		unsigned long addr = ppa & ~3;
++		int shift = ppa % 4;
++		probe_mem_t r = { .val = probe_map(readl(mapped + addr)) };
++
++		int len = 4 - shift;
++
++		if (len > count)
++			len = count;
++		if (copy_to_user(buf, &r.p[shift], len))
++			return -EFAULT;
++
++		count -= len;
++		buf += len;
++		ppa += len;
++
++		/* end of register space? */
++		if (ppa >= size)
++			break;
++	}
++
++	/* how much data was actually transferred? */
++	count = ppa - *ppos;
++	*ppos = ppa;
++	return count;
++}
++
++static ssize_t probe_write(struct file *file,
++	const char __user *buf, size_t count, loff_t *ppos)
++{
++	uint32_t ppa = *ppos;
++
++	if (*ppos >= size)
++		return -EINVAL;
++
++	printk("probe_write(%x,%zx)\n", ppa, count);
++	while (count) {
++		/* coalesce writes to same reg */
++		unsigned long addr = ppa & ~3;
++		int shift = ppa % 4;
++		probe_mem_t r;
++
++		int len = 4 - shift;
++
++		if (len > count)
++			len = count;
++
++		/* handle partial write */
++		if (len != 4)
++			r.val = probe_map(readl(mapped + addr));
++
++		if (copy_from_user(&r.p[shift], buf, len))
++			return -EFAULT;
++
++		writel(probe_rmap(r.val), mapped + addr);
++
++		count -= len;
++		buf += len;
++		ppa += len;
++
++		/* end of register space? */
++		if (ppa >= size)
++			break;
++	}
++
++	/* how much data was actually transferred? */
++	count = ppa - *ppos;
++	*ppos = ppa;
++	return count;
++}
++
++static long probe_ioctl(struct file *file,
++	unsigned int cmd, unsigned long arg)
++{
++	return -ENODEV;
++}
++
++static int probe_open(struct inode *inode, struct file *file)
++{
++	return generic_file_open(inode, file);
++}
++
++static int probe_release(struct inode *inode, struct file *file)
++{
++	return 0;
++}
++
++
++const struct file_operations probe_fops = {
++	.owner		= THIS_MODULE,
++	.llseek		= probe_llseek,
++	.read		= probe_read,
++	.write		= probe_write,
++	.unlocked_ioctl	= probe_ioctl,
++	.open		= probe_open,
++	.release	= probe_release,
++};
++
++static struct miscdevice probe_dev = {
++	.minor =  MISC_DYNAMIC_MINOR,
++	"probe",
++	&probe_fops
++};
++
++int __init probe_init(void)
++{
++	int ret = 0;
++
++	printk(KERN_INFO "Xenon Memory Probe driver version " DRV_VERSION "\n");
++
++	mapped = ioremap(base, size);
++	if (!mapped)
++		return -EINVAL;
++
++	printk(KERN_INFO "XMP mapped 0x%04lx bytes @0x%08lx\n",
++		size, base);
++
++	ret = misc_register(&probe_dev);
++	return ret;
++}
++
++void __exit probe_exit(void)
++{
++	misc_deregister(&probe_dev);
++}
++
++module_init(probe_init);
++module_exit(probe_exit);
++
++MODULE_AUTHOR("Herbert Poetzl <herbert@13thfloor.at>");
++MODULE_DESCRIPTION("Xenon Memory Probe Interface");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
+diff --git a/drivers/char/xenon_smc.c b/drivers/char/xenon_smc.c
+new file mode 100644
+index 000000000000..12e67c9cf238
+--- /dev/null
++++ b/drivers/char/xenon_smc.c
+@@ -0,0 +1,120 @@
++/*
++ *  Xenon SMC character driver.
++ *
++ *  Copyright (C) 2010 Herbert Poetzl
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; version 2 of the License.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/miscdevice.h>
++#include <linux/fs.h>
++#include <linux/uaccess.h>
++
++#include <xenon/smc-core.h>
++
++#define DRV_NAME	"xenon_smc"
++#define DRV_VERSION	"0.2"
++
++
++/* single access for now */
++
++static unsigned long is_active;
++static unsigned char msg[16];
++
++static ssize_t smc_read(struct file *file, char __user *buf,
++	size_t count, loff_t *ppos)
++{
++	if ((count != 16) || *ppos)
++		return -EINVAL;
++	if (copy_to_user(buf, msg, 0x10))
++		return -EFAULT;
++
++	return 16;
++}
++
++static ssize_t smc_write(struct file *file, const char __user *buf,
++	size_t count, loff_t *ppos)
++{
++	if ((count != 16) || *ppos)
++		return -EINVAL;
++
++	if (copy_from_user(msg, buf, 16))
++		return -EFAULT;
++
++	xenon_smc_message_wait(msg);
++
++	return 16;
++}
++
++static long smc_ioctl(struct file *file,
++	unsigned int cmd, unsigned long arg)
++{
++	return -ENODEV;
++}
++
++static int smc_open(struct inode *inode, struct file *file)
++{
++	if (test_and_set_bit(0, &is_active))
++		return -EBUSY;
++
++	return nonseekable_open(inode, file);
++}
++
++static int smc_release(struct inode *inode, struct file *file)
++{
++	clear_bit(0, &is_active);
++	return 0;
++}
++
++
++const struct file_operations smc_fops = {
++	.owner		= THIS_MODULE,
++	.read		= smc_read,
++	.write		= smc_write,
++	.unlocked_ioctl	= smc_ioctl,
++	.open		= smc_open,
++	.release	= smc_release,
++};
++
++static struct miscdevice smc_dev = {
++	.minor =  MISC_DYNAMIC_MINOR,
++	"smc",
++	&smc_fops
++};
++
++int __init smc_init(void)
++{
++	int ret = 0;
++
++	printk(KERN_INFO "Xenon SMC char driver version " DRV_VERSION "\n");
++
++	ret = misc_register(&smc_dev);
++	return ret;
++}
++
++void __exit smc_exit(void)
++{
++	misc_deregister(&smc_dev);
++}
++
++module_init(smc_init);
++module_exit(smc_exit);
++
++MODULE_AUTHOR("Herbert Poetzl <herbert@13thfloor.at>");
++MODULE_DESCRIPTION("Character Interface for Xenon Southbridge SMC");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
+diff --git a/drivers/char/xenos_rb.c b/drivers/char/xenos_rb.c
+new file mode 100644
+index 000000000000..07fd86940aa2
+--- /dev/null
++++ b/drivers/char/xenos_rb.c
+@@ -0,0 +1,937 @@
++/*
++ *  Xenos RingBuffer character driver.
++ *
++ *  Copyright (C) 2018 Justin Moore
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; version 2 of the License.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/ioctl.h>
++#include <linux/pci.h>
++#include <linux/interrupt.h>
++#include <linux/miscdevice.h>
++#include <linux/circ_buf.h>
++#include <linux/log2.h>
++#include <linux/fs.h>
++#include <linux/uaccess.h>
++#include <linux/types.h>
++
++#include <asm/cacheflush.h>
++
++#define DRV_NAME	"xenos_rb"
++#define DRV_VERSION	"0.1"
++
++#define IOC_MAGIC 0x58524230
++#define IOCTL_RESET _IO(IOC_MAGIC, 0)
++
++static int xenosrb_size = 0x8000;
++module_param(xenosrb_size, int, 0444);
++
++static uint32_t xenos_pfp_ucode[] = {
++	0xC60400, 0x7E424B, 0xA00000, 0x7E828B, 0x800001, 0xC60400, 0xCC4003,
++	0x800000, 0xD60003, 0xC60800, 0xC80C1D, 0x98C007, 0xC61000, 0x978003,
++	0xCC4003, 0xD60004, 0x800000, 0xCD0003, 0x9783EF, 0xC60400, 0x800000,
++	0xC60400, 0xC60800, 0x348C08, 0x98C006, 0xC80C1E, 0x98C000, 0xC80C1E,
++	0x80001F, 0xCC8007, 0xCC8008, 0xCC4003, 0x800000, 0xCC8003, 0xC60400,
++	0x1AAC07, 0xCA8821, 0x96C015, 0xC8102C, 0x98800A, 0x329418, 0x9A4004,
++	0xCC6810, 0x42401,  0xD00143, 0xD00162, 0xCD0002, 0x7D514C, 0xCD4003,
++	0x9B8007, 0x6A801,  0x964003, 0xC28000, 0xCF4003, 0x800001, 0xC60400,
++	0x800023, 0xC60400, 0x964003, 0x7E424B, 0xD00283, 0xC8102B, 0xC60800,
++	0x99000E, 0xC80C29, 0x98C00A, 0x345002, 0xCD0002, 0xCC8002, 0xD001E3,
++	0xD00183, 0xCC8003, 0xCC4018, 0x80004D, 0xCC8019, 0xD00203, 0xD00183,
++	0x9783B4, 0xC60400, 0xC8102B, 0xC60800, 0x9903AF, 0xC80C2A, 0x98C00A,
++	0x345002, 0xCD0002, 0xCC8002, 0xD001E3, 0xD001A3, 0xCC8003, 0xCC401A,
++	0x800000, 0xCC801B, 0xD00203, 0xD001A3, 0x800001, 0xC60400, 0xC60800,
++	0xC60C00, 0xC8102D, 0x349402, 0x99000B, 0xC8182E, 0xCD4002, 0xCD8002,
++	0xD001E3, 0xD001C3, 0xCCC003, 0xCC801C, 0xCD801D, 0x800001, 0xC60400,
++	0xD00203, 0x800000, 0xD001C3, 0xC8081F, 0xC60C00, 0xC80C20, 0x988000,
++	0xC8081F, 0xCC4003, 0xCCC003, 0xD60003, 0x800000, 0xCCC022, 0xC81C2F,
++	0xC60400, 0xC60800, 0xC60C00, 0xC81030, 0x99C000, 0xC81C2F, 0xCC8021,
++	0xCC4020, 0x990011, 0xC107FF, 0xD00223, 0xD00243, 0x345402, 0x7CB18B,
++	0x7D95CC, 0xCDC002, 0xCCC002, 0xD00263, 0x978005, 0xCCC003, 0xC60800,
++	0x80008B, 0xC60C00, 0x800000, 0xD00283, 0x97836A, 0xC60400, 0xD6001F,
++	0x800001, 0xC60400, 0xC60800, 0xC60C00, 0xC61000, 0x348802, 0xCC8002,
++	0xCC4003, 0xCCC003, 0xCD0002, 0x800000, 0xCD0003, 0xD2000D, 0xCC000D,
++	0x800000, 0xCC000D, 0xC60800, 0xC60C00, 0xCA1433, 0xD022A0, 0xCCE000,
++	0x994351, 0xCCE005, 0x800000, 0x62001,  0xC60800, 0xC60C00, 0xD022A0,
++	0xCCE000, 0xD022AE, 0xCCE029, 0xCCE005, 0x800000, 0x62001,  0x964000,
++	0xC82435, 0xCA0838, 0x366401, 0x964340, 0xCA0C3A, 0xCCA000, 0xCCE000,
++	0xCCE029, 0xCCE005, 0x800000, 0x62001,  0xC60800, 0xC60C00, 0xD202C3,
++	0xCC8003, 0xCCC003, 0xCCE027, 0x800000, 0x62001,  0xCA0831, 0x9883FF,
++	0xCA0831, 0xD6001F, 0x800001, 0xC60400, 0xD02360, 0xD02380, 0xD02385,
++	0x800000, 0x62001,  0xA2001,  0xCA0436, 0x9843DF, 0xC82435, 0x800001,
++	0xC60400, 0xD20009, 0xD2000A, 0xCC001F, 0x800000, 0xCC001F, 0xD2000B,
++	0xD2000C, 0xCC001F, 0x800000, 0xCC001F, 0xCC0023, 0xCC4003, 0x800000,
++	0xD60003, 0xD00303, 0xCC0024, 0xCC4003, 0x800000, 0xD60003, 0xD00323,
++	0xCC0025, 0xCC4003, 0x800000, 0xD60003, 0xD00343, 0xCC0026, 0xCC4003,
++	0x800000, 0xD60003, 0x800000, 0xD6001F, 0x100EF,  0x200F4,  0x300F9,
++	0x50004,  0x600D6,  0x1000FE, 0x1700DB, 0x220009, 0x230016, 0x250022,
++	0x270061, 0x2D0073, 0x2E007D, 0x2F009C, 0x3700C8, 0x3800B3, 0x3B00A6,
++	0x3F00AA, 0x4800EB, 0x5000E1, 0x5100E6, 0x5500F0, 0x5600F5, 0x5700FA,
++	0x5D00D0, 6,	6,	6,	6,	6,	6,
++	6,
++};
++
++static uint32_t xenos_me_ucode[] = {
++	0,	  0xC0200400, 0,     0,	  0xA0000A,   0,
++	0x1F3,      0x204411,   0,     0x1000000,  0x204811,   0,
++	0,	  0x400000,   4,     0xFFFF,     0x284621,   0,
++	0,	  0xD9004800, 0,     0,	  0x400000,   0,
++	0,	  0x34E00000, 0,     0,	  0x600000,   0x24A,
++	0xFFFF,     0xC0280A20, 0,     0,	  0x294582,   0,
++	0,	  0xD9004800, 0,     0,	  0x400000,   0,
++	0,	  0x600000,   0x24A, 0xFFFF,     0xC0284620, 0,
++	0,	  0xD9004800, 0,     0,	  0x400000,   0,
++	0,	  0x600000,   0x267, 0x21FC,     0x29462C,   0,
++	0,	  0xC0204800, 0,     0,	  0x400000,   0,
++	0,	  0x600000,   0x267, 0x21FC,     0x29462C,   0,
++	0,	  0xC0204800, 0,     0x3FFF,     0x2F022F,   0,
++	0,	  0xCE00000,  0,     0xA1FD,     0x29462C,   0,
++	0,	  0xD9004800, 0,     0,	  0x400000,   0,
++	0x394,      0x204411,   0,     1,	  0xC0404811, 0,
++	0,	  0x600000,   0x267, 0x21F9,     0x29462C,   0,
++	8,	  0xC0210A20, 0,     0,	  0x14E00000, 0x25,
++	7,	  0x404811,   0,     8,	  0x404811,   0,
++	0,	  0x600000,   0x267, 0x21FC,     0x29462C,   0,
++	0,	  0xC0204800, 0,     0xA1FD,     0x29462C,   0,
++	0,	  0xC0200800, 0,     0,	  0x2F0222,   0,
++	0,	  0xCE00000,  0,     0,	  0x40204800, 0,
++	1,	  0x40304A20, 0,     2,	  0xC0304A20, 0,
++	1,	  0x530A22,   0x2B,  0x80000000, 0xC0204411, 0,
++	1,	  0x604811,   0x281, 0,	  0x400000,   0,
++	0,	  0xC0200000, 0,     0x12B9B0A1, 0xC02F0220, 0,
++	0,	  0xCC00000,  0x3A,  0x1033C4D6, 0xC02F0220, 0,
++	0,	  0xCC00000,  0x3A,  0,	  0x400000,   0,
++	0x1F3,      0x204411,   0,     0x8000000,  0x204811,   0,
++	0,	  0x400000,   0x3C,  0x80000000, 0xC0204411, 0,
++	0,	  0x604811,   0x281, 0,	  0x400000,   0,
++	0x1F,       0x40280A20, 0,     0x1B,       0x2F0222,   0,
++	0,	  0xCE00000,  0x57,  2,	  0x2F0222,   0,
++	0,	  0xCE00000,  0x5E,  3,	  0x2F0222,   0,
++	0,	  0xCE00000,  0x65,  4,	  0x2F0222,   0,
++	0,	  0xCE00000,  0x6C,  0x14,       0x2F0222,   0,
++	0,	  0xCE00000,  0x6C,  0x1A,       0x2F0222,   0,
++	0,	  0xCE00000,  0x74,  0x15,       0x2F0222,   0,
++	0,	  0xCE00000,  0x79,  0x21F9,     0x29462C,   0,
++	0,	  0xC0404802, 0,     0x1F,       0x40280A20, 0,
++	0x1B,       0x2F0222,   0,     0,	  0xCE00000,  0x57,
++	2,	  0x2F0222,   0,     0,	  0xCE00000,  0x5E,
++	0,	  0x400000,   0x65,  0x1F,       0xC0210E20, 0,
++	0x612,      0x204411,   0,     0,	  0x204803,   0,
++	0,	  0xC0204800, 0,     0,	  0xC0204800, 0,
++	0x21F9,     0x29462C,   0,     0,	  0x404802,   0,
++	0x1E,       0xC0210E20, 0,     0x600,      0x204411,   0,
++	0,	  0x204803,   0,     0,	  0xC0204800, 0,
++	0,	  0xC0204800, 0,     0x21F9,     0x29462C,   0,
++	0,	  0x404802,   0,     0x1E,       0xC0210E20, 0,
++	0x605,      0x204411,   0,     0,	  0x204803,   0,
++	0,	  0xC0204800, 0,     0,	  0xC0204800, 0,
++	0x21F9,     0x29462C,   0,     0,	  0x404802,   0,
++	0x1F,       0x40280A20, 0,     0x1F,       0xC0210E20, 0,
++	0x60A,      0x204411,   0,     0,	  0x204803,   0,
++	0,	  0xC0204800, 0,     0,	  0xC0204800, 0,
++	0x21F9,     0x29462C,   0,     0,	  0x404802,   0,
++	0x1F,       0xC0280A20, 0,     0x611,      0x204411,   0,
++	0,	  0xC0204800, 0,     0x21F9,     0x29462C,   0,
++	0,	  0x404802,   0,     0x1F,       0xC0280A20, 0,
++	0,	  0x600000,   0x267, 0x21F9,     0x29462C,   0,
++	0,	  0x404802,   0,     0x81000000, 0x204411,   0,
++	1,	  0x204811,   0,     0x1FFF,     0x40280A20, 0,
++	0x80000000, 0x40280E20, 0,     0x40000000, 0xC0281220, 0,
++	0x40000,    0x294622,   0,     0,	  0x600000,   0x282,
++	0,	  0x201410,   0,     0,	  0x2F0223,   0,
++	0,	  0xCC00000,  0x88,  0,	  0xC0401800, 0x8C,
++	0x1FFF,     0xC0281A20, 0,     0x40000,    0x294626,   0,
++	0,	  0x600000,   0x282, 0,	  0x201810,   0,
++	0,	  0x2F0224,   0,     0,	  0xCC00000,  0x8F,
++	0,	  0xC0401C00, 0x93,  0x1FFF,     0xC0281E20, 0,
++	0x40000,    0x294627,   0,     0,	  0x600000,   0x282,
++	0,	  0x201C10,   0,     0,	  0x204402,   0,
++	0,	  0x2820C5,   0,     0,	  0x4948E8,   0,
++	0,	  0x600000,   0x24A, 0x10,       0x40210A20, 0,
++	0xFF,       0x280A22,   0,     0x7FF,      0x40280E20, 0,
++	2,	  0x221E23,   0,     5,	  0xC0211220, 0,
++	0x80000,    0x281224,   0,     0x13,       0x210224,   0,
++	0,	  0x14C00000, 0xA1,  0xA1000000, 0x204411,   0,
++	0,	  0x204811,   0,     0,	  0x2F0222,   0,
++	0,	  0xCC00000,  0xA5,  8,	  0x20162D,   0,
++	0x4000,     0x500E23,   0xB4,  1,	  0x2F0222,   0,
++	0,	  0xCC00000,  0xA9,  9,	  0x20162D,   0,
++	0x4800,     0x500E23,   0xB4,  2,	  0x2F0222,   0,
++	0,	  0xCC00000,  0xAD,  0x37,       0x20162D,   0,
++	0x4900,     0x500E23,   0xB4,  3,	  0x2F0222,   0,
++	0,	  0xCC00000,  0xB1,  0x36,       0x20162D,   0,
++	0x4908,     0x500E23,   0xB4,  0x29,       0x20162D,   0,
++	0x2000,     0x300E23,   0,     0,	  0x290D83,   0,
++	0x94000000, 0x204411,   0,     0,	  0x2948E5,   0,
++	0,	  0x294483,   0,     0,	  0x40201800, 0,
++	0,	  0xD9004800, 0,     0x13,       0x210224,   0,
++	0,	  0x14C00000, 0,     0x94000000, 0x204411,   0,
++	0,	  0x2948E5,   0,     0x93000000, 0x204411,   0,
++	0,	  0x404806,   0,     0,	  0x600000,   0x24A,
++	0,	  0xC0200800, 0,     0,	  0xC0201400, 0,
++	0x1F,       0x211A25,   0,     0,	  0x14E00000, 0,
++	0x7FF,      0x280E25,   0,     0x10,       0x211225,   0,
++	0x83000000, 0x204411,   0,     0,	  0x2F0224,   0,
++	0,	  0xAE00000,  0xCB,  8,	  0x203622,   0,
++	0x4000,     0x504A23,   0xDA,  1,	  0x2F0224,   0,
++	0,	  0xAE00000,  0xCF,  9,	  0x203622,   0,
++	0x4800,     0x504A23,   0xDA,  2,	  0x2F0224,   0,
++	0,	  0xAE00000,  0xD3,  0x37,       0x203622,   0,
++	0x4900,     0x504A23,   0xDA,  3,	  0x2F0224,   0,
++	0,	  0xAE00000,  0xD7,  0x36,       0x203622,   0,
++	0x4908,     0x504A23,   0xDA,  0x29,       0x203622,   0,
++	0,	  0x290D83,   0,     0x2000,     0x304A23,   0,
++	0x84000000, 0x204411,   0,     0,	  0xC0204800, 0,
++	0,	  0x21000000, 0,     0,	  0x400000,   0xC1,
++	0,	  0x600000,   0x24A, 0x83000000, 0x204411,   0,
++	0x4000,     0xC0304A20, 0,     0x84000000, 0x204411,   0,
++	0,	  0xC0204800, 0,     0,	  0x21000000, 0,
++	0,	  0x400000,   0,     0x81000000, 0x204411,   0,
++	1,	  0x204811,   0,     0x40578,    0x204411,   0,
++	0,	  0x600000,   0x282, 0,	  0xC0400000, 0,
++	0,	  0xC0200C00, 0,     0,	  0xC0201000, 0,
++	0,	  0xC0201400, 0,     0,	  0xC0201800, 0,
++	0x7F00,     0x280A21,   0,     0x4500,     0x2F0222,   0,
++	0,	  0xCE00000,  0xF2,  0,	  0xC0201C00, 0,
++	0,	  0x17000000, 0,     0x10,       0x280A23,   0,
++	0x10,       0x2F0222,   0,     0,	  0xCE00000,  0xFB,
++	0x81000000, 0x204411,   0,     1,	  0x204811,   0,
++	0x40000,    0x294624,   0,     0,	  0x600000,   0x282,
++	0,	  0x400000,   0x103, 0x81000000, 0x204411,   0,
++	0,	  0x204811,   0,     0x1EA,      0x204411,   0,
++	0,	  0x204804,   0,     0,	  0x1AC00000, 0xFF,
++	0x9E000000, 0x204411,   0,     0xDEADBEEF, 0x204811,   0,
++	0,	  0x1AE00000, 0x102, 0,	  0x2820D0,   0,
++	7,	  0x280A23,   0,     1,	  0x2F0222,   0,
++	0,	  0xAE00000,  0x10A, 0,	  0x2F00A8,   0,
++	0,	  0x4E00000,  0x123, 0,	  0x400000,   0x12A,
++	2,	  0x2F0222,   0,     0,	  0xAE00000,  0x10F,
++	0,	  0x2F00A8,   0,     0,	  0x2E00000,  0x123,
++	0,	  0x400000,   0x12A, 3,	  0x2F0222,   0,
++	0,	  0xAE00000,  0x114, 0,	  0x2F00A8,   0,
++	0,	  0xCE00000,  0x123, 0,	  0x400000,   0x12A,
++	4,	  0x2F0222,   0,     0,	  0xAE00000,  0x119,
++	0,	  0x2F00A8,   0,     0,	  0xAE00000,  0x123,
++	0,	  0x400000,   0x12A, 5,	  0x2F0222,   0,
++	0,	  0xAE00000,  0x11E, 0,	  0x2F00A8,   0,
++	0,	  0x6E00000,  0x123, 0,	  0x400000,   0x12A,
++	6,	  0x2F0222,   0,     0,	  0xAE00000,  0x123,
++	0,	  0x2F00A8,   0,     0,	  0x8E00000,  0x123,
++	0,	  0x400000,   0x12A, 0x7F00,     0x280A21,   0,
++	0x4500,     0x2F0222,   0,     0,	  0xAE00000,  0,
++	8,	  0x210A23,   0,     0,	  0x14E00000, 0x14A,
++	0,	  0xC0204400, 0,     0,	  0xC0404800, 0,
++	0x7F00,     0x280A21,   0,     0x4500,     0x2F0222,   0,
++	0,	  0xAE00000,  0x12F, 0,	  0xC0200000, 0,
++	0,	  0xC0400000, 0,     0,	  0x404C07,   0xF2,
++	0,	  0xC0201000, 0,     0,	  0xC0201400, 0,
++	0,	  0xC0201800, 0,     0,	  0xC0201C00, 0,
++	0,	  0x17000000, 0,     0x81000000, 0x204411,   0,
++	1,	  0x204811,   0,     0x40000,    0x294624,   0,
++	0,	  0x600000,   0x282, 0,	  0x2820D0,   0,
++	0,	  0x2F00A8,   0,     0,	  0xCE00000,  0,
++	0,	  0x404C07,   0x134, 0,	  0xC0201000, 0,
++	0,	  0xC0201400, 0,     0,	  0xC0201800, 0,
++	0,	  0xC0201C00, 0,     0,	  0x17000000, 0,
++	0x81000000, 0x204411,   0,     1,	  0x204811,   0,
++	0x40000,    0x294624,   0,     0,	  0x600000,   0x282,
++	0,	  0x2820D0,   0,     0,	  0x2F00A8,   0,
++	0,	  0x6E00000,  0,     0,	  0x404C07,   0x141,
++	0x60D,      0x204411,   0,     0,	  0xC0204800, 0,
++	0,	  0xC0404800, 0,     0x81000000, 0x204411,   0,
++	9,	  0x204811,   0,     0x60D,      0x204411,   0,
++	0,	  0xC0204800, 0,     0,	  0x404810,   0,
++	0x1FFF,     0xC0280A20, 0,     0x20000,    0x294622,   0,
++	0x18,       0xC0424A20, 0,     0x81000000, 0x204411,   0,
++	1,	  0x204811,   0,     0x40000,    0xC0294620, 0,
++	0,	  0x600000,   0x282, 0x60D,      0x204411,   0,
++	0,	  0xC0204800, 0,     0,	  0x404810,   0,
++	0x1F3,      0x204411,   0,     0xE0000000, 0xC0484A20, 0,
++	0,	  0xD9000000, 0,     0,	  0x400000,   0,
++	0x45D,      0x204411,   0,     0x3F,       0xC0484A20, 0,
++	0,	  0x600000,   0x24A, 0x81000000, 0x204411,   0,
++	2,	  0x204811,   0,     0xFF,       0x280E30,   0,
++	0,	  0x2F0223,   0,     0,	  0xCC00000,  0x165,
++	0,	  0x200411,   0,     0x1D,       0x203621,   0,
++	0x1E,       0x203621,   0,     0,	  0xC0200800, 0,
++	9,	  0x210222,   0,     0,	  0x14C00000, 0x171,
++	0,	  0x600000,   0x275, 0,	  0x200C11,   0,
++	0x38,       0x203623,   0,     0,	  0x210A22,   0,
++	0,	  0x14C00000, 0x17A, 0,	  0xC02F0220, 0,
++	0,	  0x400000,   0x177, 0,	  0x600000,   0x1D8,
++	0,	  0x400000,   0x178, 0,	  0x600000,   0x1DC,
++	0xA0000000, 0x204411,   0,     0,	  0x204811,   0,
++	1,	  0x210A22,   0,     0,	  0x14C00000, 0x17F,
++	0xF1FFFFFF, 0x283A2E,   0,     0x1A,       0xC0220E20, 0,
++	0,	  0x29386E,   0,     1,	  0x210A22,   0,
++	0,	  0x14C00000, 0x189, 0xE,	0xC0203620, 0,
++	0xF,	0xC0203620, 0,     0x10,       0xC0203620, 0,
++	0x11,       0xC0203620, 0,     0x12,       0xC0203620, 0,
++	0x13,       0xC0203620, 0,     0x14,       0xC0203620, 0,
++	0x15,       0xC0203620, 0,     1,	  0x210A22,   0,
++	0,	  0x14C00000, 0x1AC, 0,	  0xC0200C00, 0,
++	0x8C000000, 0x204411,   0,     0,	  0x204803,   0,
++	0xFFF,      0x281223,   0,     0x19,       0x203624,   0,
++	3,	  0x381224,   0,     0x5000,     0x301224,   0,
++	0x18,       0x203624,   0,     0x87000000, 0x204411,   0,
++	0,	  0x204804,   0,     1,	  0x331224,   0,
++	0x86000000, 0x204411,   0,     0,	  0x204804,   0,
++	0x88000000, 0x204411,   0,     0x7FFF,     0x204811,   0,
++	0x10,       0x211623,   0,     0xFFF,      0x281A23,   0,
++	0,	  0x331CA6,   0,     0x8F000000, 0x204411,   0,
++	3,	  0x384A27,   0,     0x10,       0x211223,   0,
++	0x17,       0x203624,   0,     0x8B000000, 0x204411,   0,
++	0,	  0x204804,   0,     3,	  0x381224,   0,
++	0x5000,     0x301224,   0,     0x16,       0x203624,   0,
++	0x85000000, 0x204411,   0,     0,	  0x204804,   0,
++	0x1000,     0x331CD1,   0,     0x90000000, 0x204411,   0,
++	3,	  0x384A27,   0,     0x300000,   0x293A2E,   0,
++	1,	  0x210A22,   0,     0,	  0x14C00000, 0x1B9,
++	0xA3000000, 0x204411,   0,     0,	  0x40204800, 0,
++	0xA,	0xC0220E20, 0,     0x21,       0x203623,   0,
++	0,	  0x600000,   0x1DC, 0xFFFFE000, 0x200411,   0,
++	0x2E,       0x203621,   0,     0x2F,       0x203621,   0,
++	0x1FFF,     0x200411,   0,     0x30,       0x203621,   0,
++	0x31,       0x203621,   0,     1,	  0x210A22,   0,
++	0,	  0x14C00000, 0x1BC, 0,	  0xC0200000, 0,
++	1,	  0x210A22,   0,     0,	  0x14C00000, 0x1C2,
++	0x9C000000, 0x204411,   0,     0x1F,       0x40214A20, 0,
++	0x96000000, 0x204411,   0,     0,	  0xC0204800, 0,
++	1,	  0x210A22,   0,     0,	  0x14C00000, 0x1CB,
++	0x3FFFFFFF, 0x283A2E,   0,     0xC0000000, 0x40280E20, 0,
++	0,	  0x29386E,   0,     0x18000000, 0x40280E20, 0,
++	0x38,       0x203623,   0,     0xA4000000, 0x204411,   0,
++	0,	  0xC0204800, 0,     1,	  0x210A22,   0,
++	0,	  0x14C00000, 0x1D7, 0,	  0xC0200C00, 0,
++	0x2B,       0x203623,   0,     0x2D,       0x203623,   0,
++	2,	  0x40221220, 0,     0,	  0x301083,   0,
++	0x2C,       0x203624,   0,     3,	  0xC0210E20, 0,
++	0x10000000, 0x280E23,   0,     0xEFFFFFFF, 0x283A2E,   0,
++	0,	  0x29386E,   0,     0,	  0x400000,   0,
++	0x25F4,     0x204411,   0,     0xA,	0x214A2C,   0,
++	0,	  0x600000,   0x273, 0,	  0x800000,   0,
++	0x21F4,     0x204411,   0,     0xA,	0x214A2C,   0,
++	0,	  0x600000,   0x275, 0,	  0x800000,   0,
++	0,	  0x600000,   0x24A, 0,	  0xC0200800, 0,
++	0x1F,       0x210E22,   0,     0,	  0x14E00000, 0,
++	0x3FF,      0x280E22,   0,     0x18,       0x211222,   0,
++	0xE,	0x301224,   0,     0,	  0x20108D,   0,
++	0x2000,     0x291224,   0,     0x83000000, 0x204411,   0,
++	0,	  0x294984,   0,     0x84000000, 0x204411,   0,
++	0,	  0x204803,   0,     0,	  0x21000000, 0,
++	0,	  0x400000,   0x1E1, 0x82000000, 0x204411,   0,
++	1,	  0x204811,   0,     0,	  0xC0200800, 0,
++	0x3FFF,     0x40280E20, 0,     0x10,       0xC0211220, 0,
++	0,	  0x2F0222,   0,     0,	  0xAE00000,  0x1FE,
++	0,	  0x2AE00000, 0x208, 0x20000080, 0x281E2E,   0,
++	0x80,       0x2F0227,   0,     0,	  0xCE00000,  0x1FB,
++	0,	  0x401C0C,   0x1FC, 0x20,       0x201E2D,   0,
++	0x21F9,     0x294627,   0,     0,	  0x404811,   0x208,
++	1,	  0x2F0222,   0,     0,	  0xAE00000,  0x23D,
++	0,	  0x28E00000, 0x208, 0x800080,   0x281E2E,   0,
++	0x80,       0x2F0227,   0,     0,	  0xCE00000,  0x205,
++	0,	  0x401C0C,   0x206, 0x20,       0x201E2D,   0,
++	0x21F9,     0x294627,   0,     1,	  0x204811,   0,
++	0x81000000, 0x204411,   0,     0,	  0x2F0222,   0,
++	0,	  0xAE00000,  0x20F, 3,	  0x204811,   0,
++	0x16,       0x20162D,   0,     0x17,       0x201A2D,   0,
++	0xFFDFFFFF, 0x483A2E,   0x213, 4,	  0x204811,   0,
++	0x18,       0x20162D,   0,     0x19,       0x201A2D,   0,
++	0xFFEFFFFF, 0x283A2E,   0,     0,	  0x201C10,   0,
++	0,	  0x2F0067,   0,     0,	  0x6C00000,  0x208,
++	0x81000000, 0x204411,   0,     6,	  0x204811,   0,
++	0x83000000, 0x204411,   0,     0,	  0x204805,   0,
++	0x89000000, 0x204411,   0,     0,	  0x204806,   0,
++	0x84000000, 0x204411,   0,     0,	  0x204803,   0,
++	0,	  0x21000000, 0,     0,	  0x601010,   0x24A,
++	0xC,	0x221E24,   0,     0,	  0x2F0222,   0,
++	0,	  0xAE00000,  0x230, 0x20000000, 0x293A2E,   0,
++	0x21F7,     0x29462C,   0,     0,	  0x2948C7,   0,
++	0x81000000, 0x204411,   0,     5,	  0x204811,   0,
++	0x16,       0x203630,   0,     7,	  0x204811,   0,
++	0x17,       0x203630,   0,     0x91000000, 0x204411,   0,
++	0,	  0x204803,   0,     0,	  0x23000000, 0,
++	0x8D000000, 0x204411,   0,     0,	  0x404803,   0x243,
++	0x800000,   0x293A2E,   0,     0x21F6,     0x29462C,   0,
++	0,	  0x2948C7,   0,     0x81000000, 0x204411,   0,
++	5,	  0x204811,   0,     0x18,       0x203630,   0,
++	7,	  0x204811,   0,     0x19,       0x203630,   0,
++	0x92000000, 0x204411,   0,     0,	  0x204803,   0,
++	0,	  0x25000000, 0,     0x8E000000, 0x204411,   0,
++	0,	  0x404803,   0x243, 0x83000000, 0x204411,   0,
++	3,	  0x381224,   0,     0x5000,     0x304A24,   0,
++	0x84000000, 0x204411,   0,     0,	  0x204803,   0,
++	0,	  0x21000000, 0,     0x82000000, 0x204411,   0,
++	0,	  0x404811,   0,     0x1F3,      0x204411,   0,
++	0x4000000,  0x204811,   0,     0,	  0x400000,   0x247,
++	0,	  0xC0600000, 0x24A, 0,	  0x400000,   0,
++	0,	  0xEE00000,  0x281, 0x21F9,     0x29462C,   0,
++	5,	  0x204811,   0,     0,	  0x202C0C,   0,
++	0x21,       0x20262D,   0,     0,	  0x2F012C,   0,
++	0,	  0xCC00000,  0x252, 0,	  0x403011,   0x253,
++	0x400,      0x30322C,   0,     0x81000000, 0x204411,   0,
++	2,	  0x204811,   0,     0xA,	0x21262C,   0,
++	0,	  0x210130,   0,     0,	  0x14C00000, 0x25B,
++	0xA5000000, 0x204411,   0,     1,	  0x204811,   0,
++	0,	  0x400000,   0x256, 0xA5000000, 0x204411,   0,
++	0,	  0x204811,   0,     0,	  0x2F016C,   0,
++	0,	  0xCE00000,  0x263, 0x21F4,     0x29462C,   0,
++	0xA,	0x214A2B,   0,     0x4940,     0x204411,   0,
++	0xDEADBEEF, 0x204811,   0,     0,	  0x600000,   0x26E,
++	0xDFFFFFFF, 0x283A2E,   0,     0xFF7FFFFF, 0x283A2E,   0,
++	0x20,       0x80362B,   0,     0x97000000, 0x204411,   0,
++	0,	  0x20480C,   0,     0xA2000000, 0x204411,   0,
++	0,	  0x204811,   0,     0x81000000, 0x204411,   0,
++	2,	  0x204811,   0,     0,	  0x810130,   0,
++	0xA2000000, 0x204411,   0,     1,	  0x204811,   0,
++	0x81000000, 0x204411,   0,     2,	  0x204811,   0,
++	0,	  0x810130,   0,     0x400,      0x203011,   0,
++	0x20,       0x80362C,   0,     0,	  0x203011,   0,
++	0x20,       0x80362C,   0,     0x1F,       0x201E2D,   0,
++	4,	  0x291E27,   0,     0x1F,       0x803627,   0,
++	0x21F9,     0x29462C,   0,     6,	  0x204811,   0,
++	0x5C8,      0x204411,   0,     0x10000,    0x204811,   0,
++	0xE00,      0x204411,   0,     1,	  0x804811,   0,
++	0,	  0xC0400000, 0,     0,	  0x800000,   0,
++	0,	  0x1AC00000, 0x282, 0x9F000000, 0x204411,   0,
++	0xDEADBEEF, 0x204811,   0,     0,	  0x1AE00000, 0x285,
++	0,	  0x800000,   0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0,	  0,		0,     0,	  0,	  0,
++	0x2015E,    0x20002,    0,     0x20002,    0x3D0031,   0,
++	0x20002,    0x20002,    0,     0x20002,    0x1E00002,  0,
++	0x7D01F1,   0x200012,   0,     0x20002,    0x2001E,    0,
++	0x20002,    0x1EF0002,  0,     0x960002,   0xDE0002,   0,
++	0x20002,    0x20002,    0,     0x20002,    0x20016,    0,
++	0x20002,    0x20026,    0,     0x14A00EA,  0x20155,    0,
++	0x2015C,    0x15E0002,  0,     0xEA0002,   0x15E0040,  0,
++	0xBF0162,   0x20002,    0,     0x1520002,  0x14D0002,  0,
++	0x20002,    0x13D0130,  0,     0x90160,    0xE000E,    0,
++	0x6C0051,   0x790074,   0,     0x200E5,    0x20248,    0,
++	0x20002,    0x20002,    0,     0x20002,    0x20002,    0,
++	0x20002,    0x20002,    0,     0x20002,    0x20002,    0,
++	0x20002,    0x20002,    0,     0x20002,    0x20002,    0,
++	0x20002,    0x20002,    0,     0x50280,    0x20008,    0,
++};
++
++static struct {
++    void __iomem *graphics_base;
++
++    struct circ_buf primary_rb;
++    int rb_size;
++
++    spinlock_t gfx_lock;
++    spinlock_t write_lock;
++} xenosrb_info;
++
++/**
++ *	xenosrb_reset_ring - Resets ring read/write pointers to 0
++ *  Preferably you would call this with interrupts disabled.
++ */
++static void xenosrb_reset_ring(void)
++{
++	int rb_cntl;
++
++	rb_cntl = in_be32(xenosrb_info.graphics_base + 0x0704);
++
++	/* CP_RB_CNTL.RB_RPTR_WR_ENA = 1 */
++	out_be32(xenosrb_info.graphics_base + 0x0704, rb_cntl | 0x80000000);
++
++	out_be32(xenosrb_info.graphics_base + 0x071C, 0x00000000); /* CP_RB_RPTR_WR */
++	out_be32(xenosrb_info.graphics_base + 0x0714, 0x00000000); /* CP_RB_WPTR */
++	udelay(1000);
++
++	/* CP_RB_CNTL.RB_RPTR_WR_ENA = 0 */
++	out_be32(xenosrb_info.graphics_base + 0x0704, rb_cntl);
++}
++
++static void xenosrb_setup_ring(void *buffer_base, size_t buffer_size)
++{
++	/* CP_RB_CNTL */
++	/* RB_NO_UPDATE = 1 */
++	/* BUF_SWAP = 2 */
++	out_be32(xenosrb_info.graphics_base + 0x0704,
++		 0x08020000 | (ilog2(buffer_size >> 3) & 0xFF));
++
++	/* CP_RB_BASE */
++	out_be32(xenosrb_info.graphics_base + 0x0700,
++		 virt_to_phys(buffer_base));
++}
++
++/**
++ *	xenosrb_wait_gui_idle - Waits for GUI idle or timeout
++ *	@timeout_jiffies: maximum number of jiffies to wait
++ *
++ *	Returns 0 on success, or %ETIME on timeout.
++ */
++static int xenosrb_wait_gui_idle(unsigned long timeout_jiffies)
++{
++	unsigned long start_jiffy = jiffies;
++
++	/* RBBM_STATUS.GUI_ACTIVE */
++	while (in_be32(xenosrb_info.graphics_base + 0x1740) & 0x80000000) {
++		if (jiffies - start_jiffy > timeout_jiffies) {
++			return -ETIME;
++		}
++	}
++
++	return 0;
++}
++
++/**
++ *	xenosrb_upload_pfp_ucode - Upload and verify Prefetch Parser microcode
++ *	@ucode: pointer to microcode buffer
++ *
++ *  Preferably you would call this with interrupts disabled.
++ *
++ *	Returns 0 on success, or %EIO on verification failure.
++ */
++static int xenosrb_upload_pfp_ucode(const uint32_t *ucode, size_t size)
++{
++	size_t i;
++
++	out_be32(xenosrb_info.graphics_base + 0x117C, 0); /* CP_PFP_UCODE_ADDR */
++	udelay(100);
++
++	/* Write to CP_PFP_UCODE_DATA */
++	for (i = 0; i < size; i++)
++		out_be32(xenosrb_info.graphics_base + 0x1180, ucode[i]);
++
++	/* Readback */
++	out_be32(xenosrb_info.graphics_base + 0x117C, 0); /* CP_PFP_UCODE_ADDR */
++	udelay(100);
++
++	for (i = 0; i < size; i++) {
++		/* Verification doesn't work, as the GPU appears to ignore
++		 * CP_PFP_UCODE_ADDR and returns data at an offset :\ */
++		in_be32(xenosrb_info.graphics_base + 0x1180);
++	}
++
++	return 0;
++}
++
++/**
++ *	xenosrb_upload_me_ucode - Upload and verify ME microcode
++ *	@ucode: pointer to microcode buffer
++ *
++ *  Preferably you would call this with interrupts disabled.
++ *
++ *	Returns 0 on success, or %EIO on verification failure.
++ */
++static int xenosrb_upload_me_ucode(const uint32_t *ucode, size_t size)
++{
++	size_t i;
++
++	out_be32(xenosrb_info.graphics_base + 0x07E0, 0); /* CP_ME_RAM_WADDR */
++	udelay(100);
++
++	/* Write to CP_ME_RAM_DATA */
++	for (i = 0; i < size; i++)
++		out_be32(xenosrb_info.graphics_base + 0x07E8, ucode[i]);
++
++	/* Readback and verify from CP_ME_RAM_DATA */
++	out_be32(xenosrb_info.graphics_base + 0x07E4, 0); /* CP_ME_RAM_RADDR */
++	udelay(100);
++
++	for (i = 0; i < size; i++) {
++		if (in_be32(xenosrb_info.graphics_base + 0x07E8) != ucode[i]) {
++			printk(KERN_ERR
++			       "%s: failed to verify me microcode @ dword %zu\n",
++			       __func__, i);
++			return -EIO;
++		}
++	}
++
++	return 0;
++}
++
++static int xenosrb_setup(void *buffer_base, size_t buffer_size)
++{
++	int rc = 0;
++
++	out_be32(xenosrb_info.graphics_base + 0x07D8, 0x1000FFFF); /* CP_ME_CNTL.ME_HALT = 1 */
++	udelay(1000);
++
++	xenosrb_reset_ring();
++	xenosrb_setup_ring(buffer_base, buffer_size);
++
++	rc = xenosrb_upload_pfp_ucode(xenos_pfp_ucode,
++				      ARRAY_SIZE(xenos_pfp_ucode));
++	if (rc) {
++		return rc;
++	}
++
++	rc = xenosrb_upload_me_ucode(xenos_me_ucode,
++				     ARRAY_SIZE(xenos_me_ucode));
++	if (rc) {
++		return rc;
++	}
++
++	xenosrb_wait_gui_idle(HZ / 4);
++
++	out_be32(xenosrb_info.graphics_base + 0x07D8, 0x0000FFFF); /* CP_ME_CNTL.ME_HALT = 0 */
++	out_be32(xenosrb_info.graphics_base + 0x07D0, 0x0000FFFF); /* CP_INT_ACK.RTS[0..15]ACK = 1 */
++	out_be32(xenosrb_info.graphics_base + 0x07F0, 0x00000000); /* CP_DEBUG */
++	out_be32(xenosrb_info.graphics_base + 0x07D8, 0x1000FFFF); /* CP_ME_CNTL.ME_HALT = 1 */
++
++	udelay(2000);
++	out_be32(xenosrb_info.graphics_base + 0x00F0, 0x00000001); /* RBBM_SOFT_RESET.SOFT_RESET_CP = 1 */
++	udelay(1000);
++	out_be32(xenosrb_info.graphics_base + 0x00F0, 0x00000000); /* RBBM_SOFT_RESET.SOFT_RESET_CP = 0 */
++	udelay(1000);
++
++	rc = xenosrb_wait_gui_idle(HZ / 4);
++	if (rc) {
++		printk(KERN_ERR "%s: timed out waiting for GUI idle (reset)\n", __func__);
++		return rc;
++	}
++
++	xenosrb_setup_ring(buffer_base, buffer_size);
++	out_be32(xenosrb_info.graphics_base + 0x07D8, 0x0000FFFF); /* CP_ME_CNTL.ME_HALT = 0 */
++
++	rc = xenosrb_wait_gui_idle(HZ / 4);
++	if (rc) {
++		printk(KERN_ERR "%s: timed out waiting for GUI idle (final)\n", __func__);
++		return rc;
++	}
++
++	return 0;
++}
++
++static void xenosrb_shutdown(void)
++{
++	out_be32(xenosrb_info.graphics_base + 0x07D8, 0x10000000); /* CP_ME_CNTL.ME_HALT = 1 */
++    out_be32(xenosrb_info.graphics_base + 0x0704, 0x00000000); /* CP_RB_CNTL */
++    out_be32(xenosrb_info.graphics_base + 0x0700, 0x00000000); /* CP_RB_BASE */
++	xenosrb_reset_ring();
++}
++
++static irqreturn_t xenos_interrupt(int irq, void* dev)
++{
++	return IRQ_HANDLED;
++}
++
++static ssize_t xenosrb_write(struct file *file, const char __user *buf,
++			     size_t count, loff_t *ppos)
++{
++	struct circ_buf *primary_rb = &xenosrb_info.primary_rb;
++	size_t space;
++	size_t trail_space;
++	int head_ptr;
++	unsigned long flags;
++
++	if (*ppos || (count & 0x3) != 0x0)
++		return -EINVAL;
++
++	spin_lock(&xenosrb_info.write_lock);
++	space = CIRC_SPACE(primary_rb->head, primary_rb->tail,
++			   xenosrb_info.rb_size);
++	if (space <= count) {
++		/* Update the head pointer and check again */
++		primary_rb->tail = in_be32(xenosrb_info.graphics_base + 0x0710) / 4;
++
++		space = CIRC_SPACE(primary_rb->head, primary_rb->tail,
++				   xenosrb_info.rb_size);
++
++		if (space < count) {
++			spin_unlock(&xenosrb_info.write_lock);
++			return -EBUSY;
++		}
++	}
++
++	trail_space = CIRC_SPACE_TO_END(primary_rb->head, primary_rb->tail,
++					xenosrb_info.rb_size);
++
++	/* Copy bytes to end of ringbuffer */
++	if (copy_from_user(primary_rb->buf + primary_rb->head, buf,
++			   min(trail_space, count))) {
++		spin_unlock(&xenosrb_info.write_lock);
++		return -EFAULT;
++	}
++
++	head_ptr = primary_rb->head + min(trail_space, count);
++
++	if (trail_space < count) {
++		/* Wrap around, copy bytes to beginning of ring buffer. */
++		if (copy_from_user(primary_rb->buf, buf + trail_space,
++				   count - trail_space)) {
++			spin_unlock(&xenosrb_info.write_lock);
++			return -EFAULT;
++		}
++
++		head_ptr = count - trail_space;
++	}
++
++	/* Update our tail pointer. */
++	primary_rb->head = head_ptr & (xenosrb_info.rb_size - 1);
++
++	/* Flush the CPU cache. */
++	flush_dcache_range((uintptr_t)primary_rb->buf,
++			   (uintptr_t)primary_rb->buf + xenosrb_info.rb_size);
++
++	spin_lock_irqsave(&xenosrb_info.gfx_lock, flags);
++	out_be32(xenosrb_info.graphics_base + 0x0714,
++		 primary_rb->head / 4); /* CP_RB_WPTR */
++	spin_unlock_irqrestore(&xenosrb_info.gfx_lock, flags);
++
++	spin_unlock(&xenosrb_info.write_lock);
++	return count;
++}
++
++static long xenosrb_ioctl(struct file *file, unsigned int cmd,
++			  unsigned long arg)
++{
++	unsigned long flags;
++
++	switch (cmd) {
++	case IOCTL_RESET:
++		spin_lock_irqsave(&xenosrb_info.gfx_lock, flags);
++
++		out_be32(xenosrb_info.graphics_base + 0x07D8, 0x1000FFFF); /* CP_ME_CNTL.ME_HALT = 1 */
++		xenosrb_reset_ring();
++		xenosrb_info.primary_rb.head = 0;
++		xenosrb_info.primary_rb.tail = 0;
++		out_be32(xenosrb_info.graphics_base + 0x07D8, 0x0000FFFF); /* CP_ME_CNTL.ME_HALT = 0 */
++
++		spin_unlock_irqrestore(&xenosrb_info.gfx_lock, flags);
++		return 0;
++	}
++
++	return -EINVAL;
++}
++
++static const struct file_operations xenos_fops = {
++	.write = xenosrb_write,
++	.open = nonseekable_open,
++    .unlocked_ioctl = xenosrb_ioctl,
++};
++
++static struct miscdevice xenosrb_dev = {
++	.minor =  MISC_DYNAMIC_MINOR,
++	"xenosrb",
++	&xenos_fops
++};
++
++static int xenosrb_probe(struct pci_dev *dev,
++			 const struct pci_device_id *dev_id)
++{
++	unsigned long flags;
++	unsigned long mmio_start, mmio_len, mmio_flags;
++	int rc = 0;
++
++	if (!dev) {
++		return -EINVAL;
++	}
++
++	if ((rc = pci_enable_device(dev))) {
++		goto err_out;
++	}
++
++	mmio_flags = pci_resource_flags(dev, 0);
++	if (!(mmio_flags & IORESOURCE_MEM)) {
++		dev_err(&dev->dev,
++			"%s: region #0 is not a MEM resource, abort!",
++			__func__);
++		rc = -ENODEV;
++		goto err_release_pci_device;
++	}
++
++	mmio_start = pci_resource_start(dev, 0);
++	mmio_len = pci_resource_len(dev, 0);
++
++	/* We're going to request all regions, even though there's only one. */
++	if (!mmio_len || (rc = pci_request_regions(dev, dev->dev.kobj.name))) {
++		dev_err(&dev->dev,
++			"%s: failed to request I/O regions (code %d)", __func__,
++			rc);
++		rc = -EBUSY;
++		goto err_release_pci_device;
++	}
++
++	xenosrb_info.graphics_base = ioremap(mmio_start, mmio_len);
++	if (!xenosrb_info.graphics_base) {
++		printk(KERN_ERR "%s: failed to ioremap gfx regs\n", __func__);
++		rc = -EIO;
++		goto err_release_pci_regions;
++	}
++
++	rc = misc_register(&xenosrb_dev);
++	if (rc) {
++		goto err_release_reg;
++	}
++
++	xenosrb_info.rb_size = 1 << (ilog2(xenosrb_size) & 0xFF);
++	xenosrb_info.primary_rb.buf = kzalloc(xenosrb_info.rb_size, GFP_KERNEL);
++	if (!xenosrb_info.primary_rb.buf) {
++		rc = -ENOMEM;
++		goto err_unregister_dev;
++	}
++
++	spin_lock_init(&xenosrb_info.gfx_lock);
++	spin_lock_init(&xenosrb_info.write_lock);
++
++	/* Setup the ringbuffer with interrupts disabled */
++	spin_lock_irqsave(&xenosrb_info.gfx_lock, flags);
++
++	if (xenosrb_setup(xenosrb_info.primary_rb.buf, xenosrb_info.rb_size)) {
++		spin_unlock_irqrestore(&xenosrb_info.gfx_lock, flags);
++		rc = -EIO;
++		goto err_free_rb;
++	}
++
++	xenosrb_info.primary_rb.head = 0;
++	xenosrb_info.primary_rb.tail = 0;
++
++	/* CP_RB_WPTR_DELAY */
++	out_be32(xenosrb_info.graphics_base + 0x0718, 0x0010);
++
++	spin_unlock_irqrestore(&xenosrb_info.gfx_lock, flags);
++
++	rc = request_irq(dev->irq, xenos_interrupt, IRQF_SHARED, "Xenos", dev);
++	if (rc) {
++		printk(KERN_ERR "%s: failed to request IRQ 0x%.2X\n", __func__,
++		       dev->irq);
++	}
++
++	printk("XenosRB Character Driver Initialized, ring size = %d\n",
++	       xenosrb_info.rb_size);
++	return 0;
++
++	xenosrb_reset_ring();
++err_free_rb:
++	kfree(xenosrb_info.primary_rb.buf);
++err_unregister_dev:
++	misc_deregister(&xenosrb_dev);
++err_release_reg:
++	iounmap(xenosrb_info.graphics_base);
++err_release_pci_regions:
++	pci_release_regions(dev);
++err_release_pci_device:
++	pci_disable_device(dev);
++err_out:
++	return rc;
++}
++
++static void xenosrb_remove(struct pci_dev *dev)
++{
++	unsigned long flags;
++
++	disable_irq(dev->irq);
++	free_irq(dev->irq, dev);
++	misc_deregister(&xenosrb_dev);
++
++	spin_lock_irqsave(&xenosrb_info.gfx_lock, flags);
++	xenosrb_shutdown();
++
++	spin_unlock_irqrestore(&xenosrb_info.gfx_lock, flags);
++
++	kfree(xenosrb_info.primary_rb.buf);
++	iounmap(xenosrb_info.graphics_base);
++	pci_release_regions(dev);
++}
++
++#define XENOSRB_CHR_DEV_NAME "xenos_rb"
++
++static const struct pci_device_id xenos_pci_tbl[] = {
++	{PCI_VDEVICE(MICROSOFT, 0x5811), 0}, /* xenon */
++	{PCI_VDEVICE(MICROSOFT, 0x5821), 0}, /* zephyr/falcon */
++	{PCI_VDEVICE(MICROSOFT, 0x5831), 0}, /* jasper */
++	{PCI_VDEVICE(MICROSOFT, 0x5841), 0}, /* slim */
++
++	{} /* terminate list */
++};
++
++static struct pci_driver xenosrb_pci = {
++	.name = "xenos_rb",
++	.id_table = xenos_pci_tbl,
++	.probe = xenosrb_probe,
++	.remove = xenosrb_remove,
++};
++
++static int __init xenosrb_init(void)
++{
++	int rc;
++
++	if ((rc = pci_register_driver(&xenosrb_pci))) {
++		printk(KERN_ERR "%s: pci_register_driver failed with %d",
++		       __func__, rc);
++		goto err_out;
++	}
++
++	return 0;
++
++err_out:
++	return rc;
++}
++
++static void __exit xenosrb_exit(void)
++{
++	pci_unregister_driver(&xenosrb_pci);
++}
++
++module_init(xenosrb_init);
++module_exit(xenosrb_exit);
++
++MODULE_AUTHOR("Justin Moore <arkolbed@gmail.com>");
++MODULE_DESCRIPTION("Ring Buffer Driver for Xenos GPU");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
+\ No newline at end of file
+diff --git a/drivers/gpu/drm/tiny/Kconfig b/drivers/gpu/drm/tiny/Kconfig
+index 06e54694a7f2..39117eaff864 100644
+--- a/drivers/gpu/drm/tiny/Kconfig
++++ b/drivers/gpu/drm/tiny/Kconfig
+@@ -82,6 +82,18 @@ config DRM_PANEL_MIPI_DBI
+ 	  https://github.com/notro/panel-mipi-dbi/wiki.
+ 	  To compile this driver as a module, choose M here.
+ 
++config DRM_XENOS
++	tristate "Xbox 360 'Xenos' driver"
++	depends on DRM && MMU
++	select DRM_CLIENT_SELECTION
++	select DRM_GEM_SHMEM_HELPER
++	select DRM_GEM_DMA_HELPER
++	select DRM_KMS_HELPER
++	select DRM_TTM
++	select DRM_TTM_HELPER
++	help
++	  wow this sure does the xbox 360 a good
++
+ config TINYDRM_HX8357D
+ 	tristate "DRM support for HX8357D display panels"
+ 	depends on DRM && SPI
+diff --git a/drivers/gpu/drm/tiny/Makefile b/drivers/gpu/drm/tiny/Makefile
+index 4a9ff61ec254..f2f48c78d042 100644
+--- a/drivers/gpu/drm/tiny/Makefile
++++ b/drivers/gpu/drm/tiny/Makefile
+@@ -6,6 +6,7 @@ obj-$(CONFIG_DRM_BOCHS)			+= bochs.o
+ obj-$(CONFIG_DRM_CIRRUS_QEMU)		+= cirrus-qemu.o
+ obj-$(CONFIG_DRM_GM12U320)		+= gm12u320.o
+ obj-$(CONFIG_DRM_PANEL_MIPI_DBI)	+= panel-mipi-dbi.o
++obj-$(CONFIG_DRM_XENOS)			+= xenos.o
+ obj-$(CONFIG_TINYDRM_HX8357D)		+= hx8357d.o
+ obj-$(CONFIG_TINYDRM_ILI9163)		+= ili9163.o
+ obj-$(CONFIG_TINYDRM_ILI9225)		+= ili9225.o
+diff --git a/drivers/gpu/drm/tiny/xenos.c b/drivers/gpu/drm/tiny/xenos.c
+new file mode 100644
+index 000000000000..7fae55b3a8f2
+--- /dev/null
++++ b/drivers/gpu/drm/tiny/xenos.c
+@@ -0,0 +1,353 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++
++#include <linux/aperture.h>
++#include <linux/iosys-map.h>
++#include <linux/module.h>
++#include <linux/pci.h>
++
++#include <video/cirrus.h>
++#include <video/vga.h>
++
++#include <drm/drm_atomic.h>
++#include <drm/drm_atomic_helper.h>
++#include <drm/drm_atomic_state_helper.h>
++#include <drm/drm_connector.h>
++#include <drm/drm_damage_helper.h>
++#include <drm/drm_drv.h>
++#include <drm/drm_edid.h>
++#include <drm/drm_fbdev_shmem.h>
++#include <drm/drm_fbdev_ttm.h>
++#include <drm/drm_file.h>
++#include <drm/drm_format_helper.h>
++#include <drm/drm_fourcc.h>
++#include <drm/drm_framebuffer.h>
++#include <drm/drm_gem_atomic_helper.h>
++#include <drm/drm_gem_framebuffer_helper.h>
++#include <drm/drm_gem_shmem_helper.h>
++#include <drm/drm_gem_dma_helper.h>
++#include <drm/drm_ioctl.h>
++#include <drm/drm_managed.h>
++#include <drm/drm_modeset_helper_vtables.h>
++#include <drm/drm_module.h>
++#include <drm/drm_probe_helper.h>
++#include <drm/drm_simple_kms_helper.h>
++#include <drm/clients/drm_client_setup.h>
++
++#define DRIVER_NAME "xenos"
++#define DRIVER_DESC "DRM framebuffer driver for Xbox 360's Xenos"
++#define DRIVER_MAJOR 1
++#define DRIVER_MINOR 0
++
++struct xenos_fb {
++	dma_addr_t dma_addr;
++	void *vaddr;
++	size_t size;
++};
++
++struct xenos_device {
++	struct drm_device dev;
++
++	struct drm_simple_display_pipe pipe;
++	struct drm_connector connector;
++
++	struct drm_display_mode fixed_mode;
++	struct xenos_fb real_framebuffer;
++
++	void __iomem *regs;
++};
++
++static struct xenos_device *xenos_of_pipe(struct drm_simple_display_pipe *pipe)
++{
++	return container_of(pipe, struct xenos_device, pipe);
++}
++
++static struct xenos_device *xenos_of_dev(struct drm_device *dev)
++{
++	return container_of(dev, struct xenos_device, dev);
++}
++
++/* --- Main display pipe --- */
++
++static void xenos_enable(struct drm_simple_display_pipe *pipe,
++			 struct drm_crtc_state *crtc_state,
++			 struct drm_plane_state *plane_state)
++{
++	struct xenos_device *xenos = xenos_of_pipe(pipe);
++
++	// since I haven't worked out how to describe nonlinear tilings yet,
++	// let's just fake it with shadow buffers
++	if (crtc_state->planes_changed ||
++	    IS_ERR_OR_NULL(xenos->real_framebuffer.vaddr)) {
++		// we're guaranteed no scaling in simple pipe, so this is ok
++		int width = plane_state->fb->width;
++		int height = plane_state->fb->height;
++		int bpp = drm_format_info_bpp(plane_state->fb->format, 0);
++		int cpp = DIV_ROUND_UP(bpp, 8);
++
++		if (!IS_ERR_OR_NULL(xenos->real_framebuffer.vaddr))
++			dma_free_coherent(xenos->dev.dev,
++					  xenos->real_framebuffer.size,
++					  xenos->real_framebuffer.vaddr,
++					  xenos->real_framebuffer.dma_addr);
++
++		xenos->real_framebuffer.size = width * height * cpp;
++		xenos->real_framebuffer.vaddr = dma_alloc_coherent(
++			xenos->dev.dev, xenos->real_framebuffer.size,
++			&xenos->real_framebuffer.dma_addr, 0);
++
++		drm_info(&xenos->dev, "Using %dx%d (%04lx) fb\n", width, height,
++			 xenos->real_framebuffer.size);
++		iowrite32be(xenos->real_framebuffer.dma_addr,
++			    xenos->regs + 0x6110);
++	}
++
++	iowrite32be(1, xenos->regs + 0x6100);
++}
++
++static void xenos_disable(struct drm_simple_display_pipe *pipe)
++{
++	struct xenos_device *xenos = xenos_of_pipe(pipe);
++	iowrite32be(0, xenos->regs + 0x6100);
++
++	dma_free_coherent(xenos->dev.dev, xenos->real_framebuffer.size,
++			  xenos->real_framebuffer.vaddr,
++			  xenos->real_framebuffer.dma_addr);
++	xenos->real_framebuffer.vaddr = NULL;
++}
++
++static void xenos_blit(struct iosys_map dst, struct iosys_map src,
++		       struct drm_rect src_rect, struct drm_framebuffer *fb)
++{
++	for (int y = src_rect.y1; y < src_rect.y2; y++) {
++		// tiles are 4x2 - copy 4px at a time
++		for (int x = src_rect.x1 & ~3; x < src_rect.x2; x += 4) {
++			// horrible calculation from libxenon
++			int ndx = ((((y & ~31) * fb->width) + (x & ~31) * 32) +
++				   (((x & 3) + ((y & 1) << 2) +
++				     ((x & 28) << 1) + ((y & 30) << 5)) ^
++				    ((y & 8) << 2)));
++
++			u32 *dst32 = dst.vaddr + ndx * 4;
++			const u32 *src32 =
++				src.vaddr + x * 4 + y * fb->pitches[0];
++			*dst32++ = swab32(*src32++);
++			*dst32++ = swab32(*src32++);
++			*dst32++ = swab32(*src32++);
++			*dst32++ = swab32(*src32++);
++		}
++	}
++}
++
++static void xenos_update(struct drm_simple_display_pipe *pipe,
++			 struct drm_plane_state *old_state)
++{
++	struct xenos_device *xenos = xenos_of_pipe(pipe);
++	struct drm_device *dev = &xenos->dev;
++
++	struct drm_plane_state *state = pipe->plane.state;
++	struct drm_shadow_plane_state *shadow_plane_state =
++		to_drm_shadow_plane_state(state);
++	struct drm_framebuffer *fb = state->fb;
++	struct drm_atomic_helper_damage_iter iter;
++	struct drm_rect damage;
++	int idx;
++
++	struct iosys_map src = shadow_plane_state->data[0];
++	struct iosys_map dst;
++
++	// I don't understand the DRM lifecycle well enough, but this gets
++	// called *before* enable in some cases.
++	if (IS_ERR_OR_NULL(xenos->real_framebuffer.vaddr))
++		return;
++
++	iosys_map_set_vaddr(&dst, xenos->real_framebuffer.vaddr);
++
++	if (!drm_dev_enter(&xenos->dev, &idx))
++		return;
++
++	drm_atomic_helper_damage_iter_init(&iter, old_state, state);
++	drm_atomic_for_each_plane_damage(&iter, &damage) {
++		struct drm_rect dst_clip = state->dst;
++
++		if (!drm_rect_intersect(&dst_clip, &damage))
++			continue;
++		
++		xenos_blit(dst, src, damage, fb);
++	}
++
++	dma_sync_single_for_device(dev->dev, xenos->real_framebuffer.dma_addr,
++				   xenos->real_framebuffer.size, DMA_TO_DEVICE);
++
++	drm_dev_exit(idx);
++}
++
++static const struct drm_simple_display_pipe_funcs xenos_pipe_funcs = {
++	DRM_GEM_SIMPLE_DISPLAY_PIPE_SHADOW_PLANE_FUNCS,
++	.enable = xenos_enable,
++	.disable = xenos_disable,
++	.update = xenos_update,
++};
++
++/* --- Connector --- */
++
++static int xenos_connector_helper_get_modes(struct drm_connector *connector)
++{
++	struct xenos_device *xenos = xenos_of_dev(connector->dev);
++
++	return drm_connector_helper_get_modes_fixed(connector,
++						    &xenos->fixed_mode);
++}
++
++static const struct drm_connector_helper_funcs xenos_connector_helper_funcs = {
++	.get_modes = xenos_connector_helper_get_modes,
++};
++
++static const struct drm_connector_funcs xenos_connector_funcs = {
++	.reset = drm_atomic_helper_connector_reset,
++	.fill_modes = drm_helper_probe_single_connector_modes,
++	.destroy = drm_connector_cleanup,
++	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
++	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
++};
++
++/* --- Main driver --- */
++
++static const struct drm_mode_config_funcs xenos_mode_config_funcs = {
++	.fb_create = drm_gem_fb_create_with_dirty,
++	.atomic_check = drm_atomic_helper_check,
++	.atomic_commit = drm_atomic_helper_commit,
++};
++
++static int xenos_load(struct xenos_device *xenos)
++{
++	struct drm_device *dev = &xenos->dev;
++	struct drm_connector *connector = &xenos->connector;
++	int ret;
++
++	static const struct drm_display_mode mode = { DRM_MODE_INIT(
++		60, 1280, 720, DRM_MODE_RES_MM(1280, 96ul),
++		DRM_MODE_RES_MM(720, 96ul)) };
++	static const uint32_t formats[] = { DRM_FORMAT_XRGB8888 };
++
++	ret = drmm_mode_config_init(dev);
++	if (ret)
++		return ret;
++
++	// todo these are guesses. check the radeon ref
++	dev->mode_config.min_width = 32;
++	dev->mode_config.max_width = 4096;
++	dev->mode_config.min_height = 32;
++	dev->mode_config.max_height = 4096;
++	dev->mode_config.preferred_depth = 32;
++	dev->mode_config.funcs = &xenos_mode_config_funcs;
++
++	xenos->fixed_mode = mode;
++
++	ret = drm_connector_init(dev, connector, &xenos_connector_funcs,
++				 DRM_MODE_CONNECTOR_Unknown);
++	if (ret)
++		return ret;
++
++	drm_connector_helper_add(connector, &xenos_connector_helper_funcs);
++	drm_connector_set_panel_orientation_with_quirk(
++		connector, DRM_MODE_PANEL_ORIENTATION_UNKNOWN, 1280, 720);
++
++	ret = drm_simple_display_pipe_init(dev, &xenos->pipe, &xenos_pipe_funcs,
++					   formats, ARRAY_SIZE(formats), NULL,
++					   connector);
++	if (ret)
++		return ret;
++
++	drm_plane_enable_fb_damage_clips(&xenos->pipe.plane);
++	drm_mode_config_reset(dev);
++	return 0;
++}
++
++/* ------------------------------------------------------------------ */
++
++DEFINE_DRM_GEM_FOPS(xenos_fops);
++
++static const struct drm_driver xenos_driver = {
++	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
++
++	.name = DRIVER_NAME,
++	.desc = DRIVER_DESC,
++	.major = DRIVER_MAJOR,
++	.minor = DRIVER_MINOR,
++
++	.fops = &xenos_fops,
++	DRM_GEM_SHMEM_DRIVER_OPS,
++	DRM_FBDEV_SHMEM_DRIVER_OPS,
++};
++
++static int xenos_pci_probe(struct pci_dev *pdev,
++			   const struct pci_device_id *ent)
++{
++	struct drm_device *dev;
++	struct xenos_device *xenos;
++	int ret;
++
++	ret = aperture_remove_conflicting_pci_devices(pdev,
++						       xenos_driver.name);
++	if (ret)
++		return ret;
++
++	ret = pcim_enable_device(pdev);
++	if (ret)
++		return ret;
++
++	ret = pci_request_regions(pdev, DRIVER_NAME);
++	if (ret)
++		return ret;
++
++	ret = -ENOMEM;
++	xenos = devm_drm_dev_alloc(&pdev->dev, &xenos_driver,
++				   struct xenos_device, dev);
++	if (IS_ERR(xenos))
++		return PTR_ERR(xenos);
++
++	dev = &xenos->dev;
++
++	xenos->regs = devm_ioremap(&pdev->dev, pci_resource_start(pdev, 0),
++				   pci_resource_len(pdev, 0));
++	if (xenos->regs == NULL)
++		return -ENOMEM;
++
++	ret = xenos_load(xenos);
++	if (ret)
++		return ret;
++
++	pci_set_drvdata(pdev, dev);
++	ret = drm_dev_register(dev, 0);
++	if (ret)
++		return ret;
++
++	drm_client_setup(dev, NULL);
++	return 0;
++}
++
++static void xenos_pci_remove(struct pci_dev *pdev)
++{
++	struct drm_device *dev = pci_get_drvdata(pdev);
++
++	drm_dev_unplug(dev);
++}
++
++static const struct pci_device_id xenos_pci_tbl[] = {
++	{ PCI_VDEVICE(MICROSOFT, 0x5811), 0 }, /* xenon */
++	{ PCI_VDEVICE(MICROSOFT, 0x5821), 0 }, /* zephyr/falcon */
++	{ PCI_VDEVICE(MICROSOFT, 0x5831), 0 }, /* jasper */
++	{ PCI_VDEVICE(MICROSOFT, 0x5841), 0 }, /* slim */
++
++	{} /* terminate list */
++};
++static struct pci_driver xenos_pci_driver = {
++	.name = DRIVER_NAME,
++	.id_table = xenos_pci_tbl,
++	.probe = xenos_pci_probe,
++	.remove = xenos_pci_remove,
++};
++
++drm_module_pci_driver(xenos_pci_driver);
++MODULE_DEVICE_TABLE(pci, xenos_pci_tbl);
++MODULE_LICENSE("GPL");
+diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
+index 9d28fcf7cd2a..f147dcda7ba7 100644
+--- a/drivers/hwmon/Kconfig
++++ b/drivers/hwmon/Kconfig
+@@ -2629,6 +2629,13 @@ config SENSORS_INTEL_M10_BMC_HWMON
+ 	  sensors monitor various telemetry data of different components on the
+ 	  card, e.g. board temperature, FPGA core temperature/voltage/current.
+ 
++config SENSORS_XENON
++	tristate "Xenon SMC"
++	depends on PPC_XENON
++	help
++	  This driver provides support for the Xenon SMC sensors and
++	  fan control.
++
+ if ACPI
+ 
+ comment "ACPI drivers"
+diff --git a/drivers/hwmon/Makefile b/drivers/hwmon/Makefile
+index cd8bc4752b4d..4d05c7096add 100644
+--- a/drivers/hwmon/Makefile
++++ b/drivers/hwmon/Makefile
+@@ -240,6 +240,7 @@ obj-$(CONFIG_SENSORS_W83L785TS)	+= w83l785ts.o
+ obj-$(CONFIG_SENSORS_W83L786NG)	+= w83l786ng.o
+ obj-$(CONFIG_SENSORS_WM831X)	+= wm831x-hwmon.o
+ obj-$(CONFIG_SENSORS_WM8350)	+= wm8350-hwmon.o
++obj-$(CONFIG_SENSORS_XENON)	+= xenon-hwmon.o
+ obj-$(CONFIG_SENSORS_XGENE)	+= xgene-hwmon.o
+ 
+ obj-$(CONFIG_SENSORS_OCC)	+= occ/
+diff --git a/drivers/hwmon/xenon-hwmon.c b/drivers/hwmon/xenon-hwmon.c
+new file mode 100644
+index 000000000000..0e910aa7e376
+--- /dev/null
++++ b/drivers/hwmon/xenon-hwmon.c
+@@ -0,0 +1,231 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ *  Xenon HW Monitor via SMC driver.
++ *
++ *  Copyright (C) 2025 Michael "Techflash" Garofalo
++ *  Copyright (C) 2010 Herbert Poetzl
++ */
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/types.h>
++#include <linux/platform_device.h>
++#include <linux/err.h>
++#include <linux/hwmon.h>
++#include <linux/hwmon-sysfs.h>
++
++#include <xenon/smc-core.h>
++
++#define DRV_NAME	"xenon-hwmon"
++#define DRV_VERSION	"0.2"
++
++#if 0
++struct hwmon {
++	spinlock_t	lock;
++
++	struct device	*xenon_hwmon_dev;
++};
++#endif
++static unsigned int fan_speed[2];
++
++static const char *temp_labels[4] = {
++	"CPU",
++	"GPU",
++	"EDRAM",
++	"Motherboard"
++};
++
++static unsigned long xenon_get_temp(unsigned nr)
++{
++	unsigned char msg[16] = { 0x07 };
++	static unsigned int temp[4] = { 0 };
++
++	/* FIXME: only every N jiffies */
++	xenon_smc_message_wait(msg);
++	temp[0] = (msg[1] | (msg[2] << 8)) * 1000 / 256;
++	temp[1] = (msg[3] | (msg[4] << 8)) * 1000 / 256;
++	temp[2] = (msg[5] | (msg[6] << 8)) * 1000 / 256;
++	temp[3] = (msg[7] | (msg[8] << 8)) * 1000 / 256;
++
++	return temp[nr & 3];
++}
++
++static int xenon_set_cpu_fan_speed(unsigned val)
++{
++	unsigned char msg[16] = { 0x94, (val & 0x7F) | 0x80 };
++
++	xenon_smc_message(msg);
++	return 0;
++}
++
++static int xenon_set_gpu_fan_speed(unsigned val)
++{
++	unsigned char msg[16] = { 0x89, (val & 0x7F) | 0x80 };
++
++	xenon_smc_message(msg);
++	return 0;
++}
++
++
++static int xenon_read(struct device *dev, enum hwmon_sensor_types type,
++                      u32 attr, int channel, long *val)
++{
++	switch (type) {
++	case hwmon_temp:
++		if (attr == hwmon_temp_input) {
++			*val = xenon_get_temp(channel);
++			return 0;
++		}
++		break;
++	case hwmon_pwm:
++		if (attr == hwmon_pwm_input) {
++			*val = fan_speed[channel];
++			return 0;
++		}
++		break;
++	default:
++		break;
++	}
++	return -EOPNOTSUPP;
++}
++
++static int xenon_read_string(struct device *dev, enum hwmon_sensor_types type,
++                             u32 attr, int channel, const char **str)
++{
++	switch (type) {
++	case hwmon_temp:
++		if (attr == hwmon_temp_label) {
++			if (channel > 3 || channel < 0)
++				return -EINVAL;
++			*str = temp_labels[channel];
++			return 0;
++		}
++		break;
++	/* labels not supported for PWM sadly :( */
++	default:
++		break;
++	}
++	return -EOPNOTSUPP;
++}
++
++static int xenon_write(struct device *dev, enum hwmon_sensor_types type,
++                       u32 attr, int channel, long val)
++{
++	switch (type) {
++	case hwmon_pwm:
++		if (attr == hwmon_pwm_input) {
++			fan_speed[channel] = val & 0xff;
++			if (channel == 0)
++				xenon_set_cpu_fan_speed(val);
++			if (channel == 1)
++				xenon_set_gpu_fan_speed(val);
++			return 0;
++		}
++		break;
++	default:
++		break;
++	}
++	return -EOPNOTSUPP;
++}
++
++static umode_t xenon_is_visible(const void *data,
++                               enum hwmon_sensor_types type,
++			       u32 attr, int channel)
++{
++	switch (type) {
++	case hwmon_pwm:
++		switch (attr) {
++		case hwmon_pwm_input:
++			return 0644;
++		default:
++			break;
++		}
++		break;
++	case hwmon_temp:
++		switch (attr) {
++		case hwmon_temp_label:
++		case hwmon_temp_input:
++			return 0444;
++		default:
++			break;
++		}
++		break;
++	default:
++		break;
++	}
++	return 0;
++}
++
++static const struct hwmon_channel_info *xenon_info[] = {
++	HWMON_CHANNEL_INFO(temp,
++		HWMON_T_INPUT | HWMON_T_LABEL,   /* cpu */
++		HWMON_T_INPUT | HWMON_T_LABEL,   /* gpu */
++		HWMON_T_INPUT | HWMON_T_LABEL,   /* edram */
++		HWMON_T_INPUT | HWMON_T_LABEL    /* motherboard */
++	),
++	HWMON_CHANNEL_INFO(pwm,
++		HWMON_PWM_INPUT, /* cpu fan */
++		HWMON_PWM_INPUT  /* gpu fan */
++	),
++	NULL
++};
++
++static const struct hwmon_ops xenon_ops = {
++	.visible = 0,
++	.is_visible = xenon_is_visible,
++	.read = xenon_read,
++	.read_string = xenon_read_string,
++	.write = xenon_write,
++};
++
++static const struct hwmon_chip_info xenon_chip_info = {
++	.ops = &xenon_ops,
++	.info = xenon_info,
++};
++
++
++static int __init xenon_hwmon_probe(struct platform_device *pdev)
++{
++	struct device *dev;
++
++	dev = hwmon_device_register_with_info(&pdev->dev,
++					  "xenon",
++					  NULL,
++					  &xenon_chip_info,
++					  NULL);
++	return PTR_ERR_OR_ZERO(dev);
++}
++
++static int __exit xenon_hwmon_remove(struct platform_device *pdev)
++{
++	return 0;
++}
++
++
++static struct platform_driver xenon_hwmon_driver = {
++	.driver		= {
++		.name	= DRV_NAME,
++		.owner	= THIS_MODULE,
++	},
++	.remove		= __exit_p(xenon_hwmon_remove),
++};
++
++static int __init xenon_hwmon_init(void)
++{
++	int ret = platform_driver_probe(&xenon_hwmon_driver, xenon_hwmon_probe);
++
++	printk("xenon_hwmon_init() = %d\n", ret);
++	return ret;
++}
++
++static void __exit xenon_hwmon_exit(void)
++{
++	platform_driver_unregister(&xenon_hwmon_driver);
++}
++
++module_init(xenon_hwmon_init);
++module_exit(xenon_hwmon_exit);
++
++MODULE_AUTHOR("Michael \"Techflash\" Garofalo <officialTechflashYT@gmail.com>");
++MODULE_DESCRIPTION("Xenon HW Monitor via SMC driver - revised");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
+diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
+index 6e3dce7e35a4..acd15c493ee4 100644
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -1020,6 +1020,13 @@ config LEDS_ACER_A500
+ 	  This option enables support for the Power Button LED of
+ 	  Acer Iconia Tab A500.
+ 
++config LEDS_XENON
++	tristate "LED support for the Xenon Ring of Light"
++	depends on LEDS_CLASS  && PPC_XENON
++	help
++	  This option enables support for the Ring of Light LEDs on
++	  the Xenon Game Console.
++
+ source "drivers/leds/blink/Kconfig"
+ 
+ comment "Flash and Torch LED drivers"
+diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
+index 9a0333ec1a86..a777203acd29 100644
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -98,6 +98,7 @@ obj-$(CONFIG_LEDS_UPBOARD)		+= leds-upboard.o
+ obj-$(CONFIG_LEDS_WM831X_STATUS)	+= leds-wm831x-status.o
+ obj-$(CONFIG_LEDS_WM8350)		+= leds-wm8350.o
+ obj-$(CONFIG_LEDS_WRAP)			+= leds-wrap.o
++obj-$(CONFIG_LEDS_XENON)		+= leds-xenon.o
+ 
+ # Kinetic ExpressWire Protocol
+ obj-$(CONFIG_LEDS_EXPRESSWIRE)		+= leds-expresswire.o
+diff --git a/drivers/leds/leds-xenon.c b/drivers/leds/leds-xenon.c
+new file mode 100644
+index 000000000000..d2257ba6a52e
+--- /dev/null
++++ b/drivers/leds/leds-xenon.c
+@@ -0,0 +1,170 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * LEDs driver for Xbox 360 (Xenon) Ring of Light
++ *
++ * Copyright (C) 2025 Techflash <officialTechflashYT@gmail.com>
++ */
++
++#include <linux/slab.h>
++#include <linux/leds.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++
++#include <xenon/smc-core.h>
++
++#define DRVNAME "leds-xenon"
++
++/*
++ * There's no way to to get the current LED status
++ * from the Xenon SMC, so we will default to having
++ * them all off and keeping track of it manually here.
++ */
++struct xenon_led {
++	struct led_classdev cdev;
++	int id;
++};
++static unsigned char led_state = 0;
++static const char *led_positions[4] = {
++	"top-left",
++	"top-right",
++	"bottom-left",
++	"bottom-right"
++};
++static struct xenon_led leds[8];
++
++/*
++ * since our led_state is just a byte (as the SMC expects),
++ * we need to keep a lock on it so that it can't get mangled
++ * by multiple CPUs (since Xenon is an SMP platform).
++ */
++static DEFINE_SPINLOCK(led_lock);
++
++
++static void xenon_led_set(struct led_classdev *cdev,
++			  enum led_brightness brightness)
++{
++	struct xenon_led *led = container_of(cdev, struct xenon_led, cdev);
++	unsigned char smc_msg[16];
++	unsigned char led_state_old = led_state;
++	int flags = 0;
++
++	/* lock it so we can't mangle the led_state if we get here twice */
++	spin_lock_irqsave(&led_lock, flags);
++
++	/* keep track of this change */
++	if (brightness)
++		led_state |= (1 << led->id);
++	else
++		led_state &= ~(1 << led->id);
++	pr_debug("xenon_led_set: brightness=%d, id=%d, led_state_old=0x%02X, led_state_new=0x%02X\n", brightness, led->id, led_state_old, led_state);
++
++	memset(smc_msg, 0, 16);
++	smc_msg[0] = 0x99; /* set LEDs */
++	smc_msg[1] = 0x01; /* override */
++	smc_msg[2] = led_state;
++
++	/* we've completed our use of led_state, release the lock */
++	spin_unlock_irqrestore(&led_lock, flags);
++
++	/* apply it */
++	xenon_smc_message_wait(smc_msg);
++}
++
++static enum led_brightness xenon_led_get(struct led_classdev *cdev)
++{
++	struct xenon_led *led = container_of(cdev, struct xenon_led, cdev);
++	if (led_state & (1 << led->id)) {
++		pr_debug("xenon_led_get: id=%d, led_state=0x%02X, ret=1\n", led->id, led_state);
++		return 1;
++	}
++	else {
++		pr_debug("xenon_led_get: id=%d, led_state=0x%02X, ret=0\n", led->id, led_state);
++		return 0;
++	}
++}
++
++static int xenon_led_probe(struct platform_device *pdev)
++{
++	int ret, i;
++	char *color;
++
++	/* we really need the SMC to be ready */
++	if (!xenon_smc_ready())
++		return -EPROBE_DEFER;
++
++	for (i = 0; i < 8; i++) {
++		if (i < 4)
++			color = "red";
++		else
++			color = "green";
++
++		leds[i].id = i;
++		leds[i].cdev.name = kasprintf(GFP_KERNEL, "xenon:%s:%s", color, led_positions[i % 4]);
++		leds[i].cdev.max_brightness = 1;
++		leds[i].cdev.brightness_get = xenon_led_get;
++		leds[i].cdev.brightness_set = xenon_led_set;
++
++		/*
++		 * actually apply it so that the state on the real
++		 * Ring of Light is what we're saying it is
++		 */
++		xenon_led_set(&leds[i].cdev, 0);
++
++		/* register */
++		ret = led_classdev_register(&pdev->dev, &leds[i].cdev);
++		if (ret)
++			return ret;
++	}
++	return 0;
++}
++
++static void xenon_led_remove(struct platform_device *pdev)
++{
++	int i;
++
++	for (i = 0; i < 8; i++) {
++		led_classdev_unregister(&leds[i].cdev);
++		kfree(leds[i].cdev.name);
++	}
++}
++
++static struct platform_driver xenon_led_driver = {
++	.probe = xenon_led_probe,
++	.remove = xenon_led_remove,
++	.driver = {
++		.name = DRVNAME,
++	},
++};
++
++module_platform_driver(xenon_led_driver);
++
++static int __init xenon_led_init(void)
++{
++	int ret;
++	struct platform_device *pdev;
++
++	pdev = platform_device_register_simple(DRVNAME, -1, NULL, 0);
++	if (IS_ERR(pdev)) {
++		ret = PTR_ERR(pdev);
++		platform_driver_unregister(&xenon_led_driver);
++		goto out;
++	}
++
++
++	pr_info("Xenon Ring of Light LED driver loaded");
++out:
++	return ret;
++}
++
++static void __exit xenon_led_exit(void)
++{
++	platform_driver_unregister(&xenon_led_driver);
++}
++
++module_init(xenon_led_init);
++module_exit(xenon_led_exit);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("Ring of Light LED support for the Xenon Game Console");
++MODULE_AUTHOR("Techflash <officialTechflashYT@gmail.com>");
++MODULE_SOFTDEP("pre: xenon_smc_core");
+diff --git a/drivers/net/ethernet/sis/sis190.c b/drivers/net/ethernet/sis/sis190.c
+index 15e46e6ac262..8caf2f646351 100644
+--- a/drivers/net/ethernet/sis/sis190.c
++++ b/drivers/net/ethernet/sis/sis190.c
+@@ -319,6 +319,7 @@ static struct mii_chip_info {
+ 	{ "Broadcom PHY AC131",   { 0x0143, 0xbc70 }, LAN, 0 },
+ 	{ "Agere PHY ET1101B",    { 0x0282, 0xf010 }, LAN, 0 },
+ 	{ "Marvell PHY 88E1111",  { 0x0141, 0x0cc0 }, LAN, F_PHY_88E1111 },
++	{ "Marvell PHY 88E3015",  { 0x0141, 0x0e20 }, LAN, F_PHY_88E1111 },
+ 	{ "Realtek PHY RTL8201",  { 0x0000, 0x8200 }, LAN, 0 },
+ 	{ NULL, }
+ };
+@@ -328,11 +329,13 @@ static const struct {
+ } sis_chip_info[] = {
+ 	{ "SiS 190 PCI Fast Ethernet adapter" },
+ 	{ "SiS 191 PCI Gigabit Ethernet adapter" },
++	{ "Xenon PCI Fast Ethernet adapter" }
+ };
+ 
+ static const struct pci_device_id sis190_pci_tbl[] = {
+-	{ PCI_DEVICE(PCI_VENDOR_ID_SI, 0x0190), 0, 0, 0 },
+-	{ PCI_DEVICE(PCI_VENDOR_ID_SI, 0x0191), 0, 0, 1 },
++	{ PCI_DEVICE(PCI_VENDOR_ID_SI,        0x0190), 0, 0, 0 },
++	{ PCI_DEVICE(PCI_VENDOR_ID_SI,        0x0191), 0, 0, 1 },
++	{ PCI_DEVICE(PCI_VENDOR_ID_MICROSOFT, 0x580a), 0, 0, 2 },
+ 	{ 0, },
+ };
+ 
+@@ -1717,6 +1720,16 @@ static int sis190_get_mac_addr(struct pci_dev *pdev, struct net_device *dev)
+ 
+ 		if (reg & 0x00000001)
+ 			rc = sis190_get_mac_addr_from_apc(pdev, dev);
++
++		if (rc < 0) {
++			// FIXME: Need to get the MAC from NAND.
++			// \x7C\x1E\x52\x0D\xF2\xAF
++			u8 addr[ETH_ALEN] = { 0x7C, 0x1E, 0x52, 0x0D, 0xF2, 0xAF }; /* same as xell */
++
++			pr_info("%s: HACK: hardcoding MAC address\n", pci_name(pdev));
++			eth_hw_addr_set(dev, addr);
++			rc = 0;
++		}
+ 	}
+ 	return rc;
+ }
+diff --git a/drivers/rtc/Kconfig b/drivers/rtc/Kconfig
+index 64f6e9756aff..86b7c4b8b444 100644
+--- a/drivers/rtc/Kconfig
++++ b/drivers/rtc/Kconfig
+@@ -1706,6 +1706,16 @@ config RTC_DRV_PS3
+ 	  This driver can also be built as a module. If so, the module
+ 	  will be called rtc-ps3.
+ 
++config RTC_DRV_XENON
++	tristate "Xenon RTC"
++	depends on PPC_XENON
++	help
++	  If you say yes here you will get support for the RTC on the
++	  Xbox 360.
++
++	  This driver can also be built as a module. If so, the module
++	  will be called rtc-xenon.
++
+ config RTC_DRV_STMP
+ 	tristate "Freescale STMP3xxx/i.MX23/i.MX28 RTC"
+ 	depends on ARCH_MXS || COMPILE_TEST
+diff --git a/drivers/rtc/Makefile b/drivers/rtc/Makefile
+index 789bddfea99d..58e41a28d1b3 100644
+--- a/drivers/rtc/Makefile
++++ b/drivers/rtc/Makefile
+@@ -193,5 +193,6 @@ obj-$(CONFIG_RTC_DRV_WILCO_EC)	+= rtc-wilco-ec.o
+ obj-$(CONFIG_RTC_DRV_WM831X)	+= rtc-wm831x.o
+ obj-$(CONFIG_RTC_DRV_WM8350)	+= rtc-wm8350.o
+ obj-$(CONFIG_RTC_DRV_X1205)	+= rtc-x1205.o
++obj-$(CONFIG_RTC_DRV_XENON)	+= rtc-xenon.o
+ obj-$(CONFIG_RTC_DRV_XGENE)	+= rtc-xgene.o
+ obj-$(CONFIG_RTC_DRV_ZYNQMP)	+= rtc-zynqmp.o
+diff --git a/drivers/rtc/rtc-xenon.c b/drivers/rtc/rtc-xenon.c
+new file mode 100644
+index 000000000000..ddeff030d539
+--- /dev/null
++++ b/drivers/rtc/rtc-xenon.c
+@@ -0,0 +1,111 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ *  Xenon RTC via SMC driver.
++ *
++ *  Copyright (C) 2010 Herbert Poetzl
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/rtc.h>
++
++#include <xenon/smc-core.h>
++
++#define DRV_NAME	"rtc-xenon"
++#define DRV_VERSION	"0.1"
++
++	/* 15.Nov.2001 00:00 GMT (original Xbox release date in NA) */
++#define	RTC_BASE	1005782400UL
++
++
++static unsigned long xenon_get_rtc(void)
++{
++	unsigned char msg[16] = { 0x04 };
++	unsigned long msec;
++
++	xenon_smc_message_wait(msg);
++	msec = msg[1] | (msg[2] << 8) | (msg[3] << 16) |
++		(msg[4] << 24) | ((unsigned long)msg[5] << 32);
++	return RTC_BASE + msec/1000;
++}
++
++static int xenon_set_rtc(unsigned long secs)
++{
++	unsigned long msec = (secs - RTC_BASE) * 1000;
++	unsigned char msg[16] = {
++		0x85, msec & 0xFF, (msec >> 8) & 0xFF,
++		(msec >> 16) & 0xFF, (msec >> 24) & 0xFF,
++		(msec >> 32) & 0xFF };
++
++	xenon_smc_message(msg);
++	return 0;
++}
++
++static int xenon_read_time(struct device *dev, struct rtc_time *tm)
++{
++	rtc_time64_to_tm(xenon_get_rtc(), tm);
++	return 0;
++}
++
++
++static int xenon_set_time(struct device *dev, struct rtc_time *tm)
++{
++	unsigned long time = 0;
++	// int err;
++
++	time = rtc_tm_to_time64(tm);
++	// if (err)
++	//	return err;
++
++	return xenon_set_rtc(time);
++}
++
++static const struct rtc_class_ops xenon_rtc_ops = {
++	.read_time	= xenon_read_time,
++	.set_time	= xenon_set_time,
++};
++
++static int __init xenon_rtc_probe(struct platform_device *pdev)
++{
++	struct rtc_device *rtc = devm_rtc_device_register(&pdev->dev, DRV_NAME,
++				     &xenon_rtc_ops, THIS_MODULE);
++
++	printk("xenon_rtc_probe(%p) = %p\n", pdev, rtc);
++	if (IS_ERR(rtc))
++		return PTR_ERR(rtc);
++
++	platform_set_drvdata(pdev, rtc);
++	return 0;
++}
++
++static struct platform_driver xenon_rtc_driver = {
++	.driver		= {
++		.name	= DRV_NAME,
++		.owner	= THIS_MODULE,
++	},
++	.remove		= __exit_p(xenon_rtc_remove),
++};
++
++static int __init xenon_rtc_init(void)
++{
++	int ret = platform_driver_probe(&xenon_rtc_driver, xenon_rtc_probe);
++
++	printk("xenon_rtc_init() = %d\n", ret);
++	return ret;
++	// return platform_driver_probe(&xenon_rtc_driver, xenon_rtc_probe);
++}
++
++static void __exit xenon_rtc_exit(void)
++{
++	platform_driver_unregister(&xenon_rtc_driver);
++}
++
++module_init(xenon_rtc_init);
++module_exit(xenon_rtc_exit);
++
++MODULE_AUTHOR("Herbert Poetzl <herbert@13thfloor.at>");
++MODULE_DESCRIPTION("Xenon RTC driver");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
++MODULE_ALIAS("platform:rtc-xenon");
+diff --git a/drivers/scsi/scsi_scan.c b/drivers/scsi/scsi_scan.c
+index 3c6e089e80c3..cc90cca589e3 100644
+--- a/drivers/scsi/scsi_scan.c
++++ b/drivers/scsi/scsi_scan.c
+@@ -703,6 +703,7 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
+ 		memset(scsi_cmd, 0, 6);
+ 		scsi_cmd[0] = INQUIRY;
+ 		scsi_cmd[4] = (unsigned char) try_inquiry_len;
++		scsi_cmd[5] = 0xc0; /* HACK */
+ 
+ 		memset(inq_result, 0, try_inquiry_len);
+ 
+diff --git a/drivers/tty/serial/Kconfig b/drivers/tty/serial/Kconfig
+index 2829950d5bcb..0428d7c15051 100644
+--- a/drivers/tty/serial/Kconfig
++++ b/drivers/tty/serial/Kconfig
+@@ -1504,6 +1504,39 @@ config SERIAL_MILBEAUT_USIO_CONSOLE
+ 	  receives all kernel messages and warnings and which allows logins in
+ 	  single user mode).
+ 
++config SERIAL_XENON
++	tristate "Xenon XBOX 360 serial port support"
++	select SERIAL_CORE
++	help
++	  If you have an XBOX 360, you can enable its onboard
++	  serial port by enabling this options.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called xenon_uart.
++
++config SERIAL_XENON_CONSOLE
++	bool "Console on XBOX 360 serial port"
++	depends on SERIAL_XENON=y
++	select SERIAL_CORE_CONSOLE
++	help
++	  If you have enabled the serial port on the XBOX 360
++
++	  you can make it the console by answering Y to this option.
++
++config SERIAL_XENON_UART_POLL
++  bool "Enable serial RX polling from the SMC"
++  depends on SERIAL_XENON=y
++  help
++    If you have this enabled, the the UART driver will enable polling from the RX.
++
++config SERIAL_XENON_UART_POLL_RATE
++  int "UART poll rate"
++  depends on SERIAL_XENON_UART_POLL=y
++  range 10 100
++  default "10"
++  help
++    Sets the polling rate for UART polling
++
+ config SERIAL_LITEUART
+ 	tristate "LiteUART serial port support"
+ 	depends on HAS_IOMEM
+diff --git a/drivers/tty/serial/Makefile b/drivers/tty/serial/Makefile
+index a2ccbc508ec5..ea5b643461f4 100644
+--- a/drivers/tty/serial/Makefile
++++ b/drivers/tty/serial/Makefile
+@@ -64,6 +64,7 @@ obj-$(CONFIG_SERIAL_MXS_AUART)		+= mxs-auart.o
+ obj-$(CONFIG_SERIAL_OMAP)		+= omap-serial.o
+ obj-$(CONFIG_SERIAL_OWL)		+= owl-uart.o
+ obj-$(CONFIG_SERIAL_PCH_UART)		+= pch_uart.o
++obj-$(CONFIG_SERIAL_XENON)			+= xenon_uart.o
+ obj-$(CONFIG_SERIAL_PIC32)		+= pic32_uart.o
+ obj-$(CONFIG_SERIAL_PXA_NON8250)	+= pxa.o
+ obj-$(CONFIG_SERIAL_PMACZILOG)		+= pmac_zilog.o
+diff --git a/drivers/tty/serial/xenon_uart.c b/drivers/tty/serial/xenon_uart.c
+new file mode 100644
+index 000000000000..e184845ecdeb
+--- /dev/null
++++ b/drivers/tty/serial/xenon_uart.c
+@@ -0,0 +1,493 @@
++/* linux/drivers/serial/xenon.c
++ *
++ * Driver for Xenon XBOX 360 Serial
++ *
++ * Copyright (C) 2010 Herbert Poetzl
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++*/
++
++#include "linux/device.h"
++#include <linux/kernel.h>
++#include <linux/errno.h>
++#include <linux/init.h>
++#include <linux/slab.h>
++#include <linux/tty.h>
++#include <linux/tty_flip.h>
++#include <linux/serial.h>
++#include <linux/serial_core.h>
++#include <linux/console.h>
++#include <linux/module.h>
++#include <linux/io.h>
++#include <linux/workqueue.h>
++#include <linux/delay.h>
++
++#if 0
++#define dprintk(f, x...) do { printk(KERN_DEBUG f "\n" , ##x); } while (0)
++#else
++#define dprintk(f, x...)
++#endif
++
++static int xenon_status(unsigned char __iomem *membase)
++{
++	// return ((*(volatile uint32_t*)0x80000200ea001018) & 0x02000000);
++	return (*(volatile uint32_t*)(membase + 0x08));
++}
++
++static void xenon_putch(unsigned char __iomem *membase, unsigned char ch)
++{
++	/* wait for tx fifo ready */
++	while (!(xenon_status(membase) & 0x02000000));
++
++	/* put character into fifo */
++	// *(volatile uint32_t*)0x80000200ea001014 = (ch << 24) & 0xFF000000;
++	*(volatile uint32_t*)(membase + 0x04) = (ch << 24) & 0xFF000000;
++}
++
++static int xenon_getch(unsigned char __iomem *membase)
++{
++	uint32_t status;
++
++	/* wait for data ready */
++	while ((status = xenon_status(membase)) & ~0x03000000);
++
++	if (status & 0x01000000)
++		return *(volatile uint32_t*)(membase + 0x00) >> 24;
++	return -1;
++}
++
++static void xenon_stop_rx(struct uart_port *port)
++{
++	dprintk("Xenon xenon_stop_rx()");
++}
++
++static void xenon_enable_ms(struct uart_port *port)
++{
++	dprintk("Xenon xenon_enable_ms()");
++}
++
++static void xenon_stop_tx(struct uart_port *port)
++{
++	//dprintk("Xenon xenon_stop_tx()");
++}
++
++static void xenon_tx_chars(struct uart_port *port)
++{
++	struct tty_port *tport = &port->state->port;
++	char ch;
++	// int count;
++
++	if (port->x_char) {
++		xenon_putch(port->membase, port->x_char);
++		port->icount.tx++;
++		port->x_char = 0;
++		return;
++	}
++	if (kfifo_is_empty(&tport->xmit_fifo) || uart_tx_stopped(port)) {
++		xenon_stop_tx(port);
++		return;
++	}
++
++#if 0
++	count = port->fifosize >> 1;
++	do {
++		xenon_putch(port->membase, xmit->buf[xmit->tail]);
++		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
++		port->icount.tx++;
++		if (uart_circ_empty(xmit))
++			break;
++	} while (--count > 0);
++#else
++	while (!kfifo_is_empty(&tport->xmit_fifo)) {
++		uart_fifo_out(port, &ch, 1);
++		xenon_putch(port->membase, ch);
++		port->icount.tx++;
++	}
++#endif
++
++	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
++		uart_write_wakeup(port);
++
++	if (kfifo_is_empty(&tport->xmit_fifo))
++		xenon_stop_tx(port);
++}
++
++static void xenon_start_tx(struct uart_port *port)
++{
++	dprintk("Xenon xenon_start_tx()");
++	xenon_tx_chars(port);
++}
++
++static void xenon_send_xchar(struct uart_port *port, char ch)
++{
++	dprintk("Xenon xenon_send_xchar(%d)", ch);
++	xenon_putch(port->membase, ch);
++}
++
++static unsigned int xenon_tx_empty(struct uart_port *port)
++{
++	dprintk("Xenon xenon_tx_empty()");
++	return 0;
++}
++
++static unsigned int xenon_get_mctrl(struct uart_port *port)
++{
++	dprintk("Xenon xenon_get_mctrl()");
++	return 0;
++}
++
++static void xenon_set_mctrl(struct uart_port *port, unsigned int mctrl)
++{
++	dprintk("Xenon xenon_set_mctrl()");
++}
++
++static void xenon_break_ctl(struct uart_port *port, int break_state)
++{
++	dprintk("Xenon xenon_break_ctl()");
++}
++
++static void xenon_set_termios(struct uart_port *port,
++							  struct ktermios *new, const struct ktermios *old)
++{
++	int baud, quot, cflag = new->c_cflag;
++
++	dprintk("Xenon xenon_set_termios()");
++	/* get the byte size */
++	switch (cflag & CSIZE) {
++		case CS5:
++			dprintk(" - data bits = 5");
++			break;
++		case CS6:
++			dprintk(" - data bits = 6");
++			break;
++		case CS7:
++			dprintk(" - data bits = 7");
++			break;
++		default: // CS8
++			dprintk(" - data bits = 8");
++			break;
++	}
++
++	/* determine the parity */
++	if (cflag & PARENB)
++		if (cflag & PARODD)
++			pr_debug(" - parity = odd\n");
++		else
++			pr_debug(" - parity = even\n");
++		else
++		pr_debug(" - parity = none\n");
++
++	/* figure out the stop bits requested */
++	if (cflag & CSTOPB)
++		pr_debug(" - stop bits = 2\n");
++	else
++		pr_debug(" - stop bits = 1\n");
++
++	/* figure out the flow control settings */
++	if (cflag & CRTSCTS)
++		pr_debug(" - RTS/CTS is enabled\n");
++	else
++		pr_debug(" - RTS/CTS is disabled\n");
++
++	/* Set baud rate */
++	baud = uart_get_baud_rate(port, new, old, 0, port->uartclk/16);
++	quot = uart_get_divisor(port, baud);
++}
++
++// Filthy hack to get around the fact that the xbox 360 SMC doesn't actually have proper interrupts for UART receiving.
++#ifdef CONFIG_SERIAL_XENON_UART_POLL
++static struct uart_port xenon_port;
++static struct workqueue_struct *uart_workqueue;
++static struct delayed_work uart_delayed_work;
++static atomic_t keep_polling = ATOMIC_INIT(1);
++
++static void xenon_rx_work_handler(struct work_struct *work) {
++	struct uart_port *port;
++	int rx;
++
++	if(atomic_read(&keep_polling) == 1) {
++		dprintk("Exiting from polling.");
++		return;
++	}
++
++	port = &xenon_port;
++	rx = xenon_getch(port->membase);
++
++	if(rx == -1 || rx == 255)
++		goto skip;
++
++	port->icount.rx++;
++
++	if(uart_handle_sysrq_char(port, rx))
++		goto skip;
++
++	uart_insert_char(port, port->read_status_mask, 0, rx, TTY_NORMAL);
++	tty_flip_buffer_push(&port->state->port);
++skip:
++	queue_delayed_work(uart_workqueue, &uart_delayed_work, msecs_to_jiffies(CONFIG_SERIAL_XENON_UART_POLL_RATE));
++}
++
++static int xenon_uart_setup_polling(void) {
++	uart_workqueue = create_singlethread_workqueue("xenon-uart-rx");
++	if(uart_workqueue == NULL) {
++		dprintk("Couldn't create xenon rx workqueue...");
++		return -ENOMEM;
++	}
++
++	INIT_DELAYED_WORK(&uart_delayed_work, xenon_rx_work_handler);
++	atomic_set(&keep_polling, 0);
++	queue_delayed_work(uart_workqueue, &uart_delayed_work, msecs_to_jiffies(CONFIG_SERIAL_XENON_UART_POLL_RATE));
++	return 0;
++}
++
++static void xenon_uart_shutdown_polling(void) {
++	atomic_set(&keep_polling, 1);
++	flush_workqueue(uart_workqueue);
++	msleep(500);
++	destroy_workqueue(uart_workqueue);
++}
++
++#endif
++
++static int xenon_startup(struct uart_port *port)
++{
++	/* this is the first time this port is opened */
++	/* do any hardware initialization needed here */
++
++	int ret = 0;
++	dprintk("Xenon xenon_startup()");
++
++#ifdef CONFIG_SERIAL_XENON_UART_POLL
++	ret = xenon_uart_setup_polling();
++	if(ret) return ret;
++#endif
++
++	return ret;
++}
++
++static void xenon_shutdown(struct uart_port *port)
++{
++	/* The port is being closed by the last user. */
++	/* Do any hardware specific stuff here */
++
++	dprintk("Xenon xenon_shutdown()");
++
++#ifdef CONFIG_SERIAL_XENON_UART_POLL
++	xenon_uart_shutdown_polling();
++#endif
++}
++
++static const char *xenon_type(struct uart_port *port)
++{
++	return "Xenon SMC";
++}
++
++static void xenon_release_port(struct uart_port *port)
++{
++	dprintk("Xenon xenon_release_port()");
++}
++
++static int xenon_request_port(struct uart_port *port)
++{
++	dprintk("Xenon xenon_request_port()");
++	return 0;
++}
++
++static void xenon_config_port(struct uart_port *port, int flags)
++{
++	dprintk("Xenon xenon_config_port()");
++
++	if (flags & UART_CONFIG_TYPE) {
++		port->type = PORT_XENON;
++	}
++}
++
++static int xenon_verify_port(struct uart_port *port, struct serial_struct *ser)
++{
++	dprintk("Xenon xenon_verify_port()");
++	return 0;
++}
++
++#ifdef CONFIG_CONSOLE_POLL
++
++static int xenon_poll_get_char(struct uart_port *port)
++{
++	return xenon_getch(port->membase);
++}
++
++static void xenon_poll_put_char(struct uart_port *port, unsigned char c)
++{
++	xenon_putch(port->membase, c);
++}
++
++#endif
++
++static struct uart_ops xenon_ops = {
++	.tx_empty     = xenon_tx_empty,
++	.set_mctrl      = xenon_set_mctrl,
++	.get_mctrl      = xenon_get_mctrl,
++	.stop_tx        = xenon_stop_tx,
++	.start_tx       = xenon_start_tx,
++	.send_xchar     = xenon_send_xchar,
++	.stop_rx        = xenon_stop_rx,
++	.enable_ms      = xenon_enable_ms,
++	.break_ctl      = xenon_break_ctl,
++	.startup        = xenon_startup,
++	.shutdown       = xenon_shutdown,
++	//      .flush_buffer   = xenon_flush_buffer,
++	.set_termios    = xenon_set_termios,
++	//      .set_ldisc      = xenon_set_ldisc,
++	//      .pm             = xenon_pm,
++	//      .set_wake       = xenon_set_wake,
++	.type           = xenon_type,
++	.release_port   = xenon_release_port,
++	.request_port   = xenon_request_port,
++	.config_port    = xenon_config_port,
++	.verify_port    = xenon_verify_port,
++#ifdef CONFIG_CONSOLE_POLL
++	.poll_put_char  = xenon_poll_put_char,
++	.poll_get_char  = xenon_poll_get_char,
++#endif
++};
++
++static struct device xenon_device = {
++	.init_name = "Xenon UART",
++};
++
++static struct uart_port xenon_port = {
++	.type           = PORT_XENON,
++	.ops            = &xenon_ops,
++	.flags          = UPF_FIXED_TYPE | UPF_IOREMAP,
++	.mapbase        = 0x200ea001010ULL,
++	.iotype         = UPIO_MEM,
++	.uartclk        = 1843200,
++	.dev		= &xenon_device,
++};
++
++static struct console xenon_console;
++
++static struct uart_driver xenon_reg = {
++	.owner          = THIS_MODULE,
++	.driver_name    = "xenon_uart",
++	.dev_name       = "ttyS",
++	.major          = TTY_MAJOR,
++	.minor          = 64,
++	.nr             = 1,
++#ifdef CONFIG_SERIAL_XENON_CONSOLE
++	.cons           = &xenon_console,
++#endif
++};
++
++static int __init xenon_init(void)
++{
++	int result;
++
++	printk(KERN_INFO "Xenon XBOX 360 serial driver\n");
++
++	result = device_register(&xenon_device);
++	if(result) {
++		put_device(&xenon_device);
++	}
++
++	result = uart_register_driver(&xenon_reg);
++	dprintk("Xenon uart_register_driver() = %d", result);
++	if (result) {
++		device_unregister(&xenon_device);	
++		return result;
++	}
++
++	xenon_port.membase = ioremap(xenon_port.mapbase, 0x10);
++
++	result = uart_add_one_port(&xenon_reg, &xenon_port);
++	dprintk("Xenon uart_add_one_port() = %d", result);
++	if (result) {
++		device_unregister(&xenon_device);
++		uart_unregister_driver(&xenon_reg);
++		return result;
++	}
++
++	return result;
++}
++
++static void __exit xenon_exit(void)
++{
++	printk(KERN_INFO "Xenon XBOX 360 serial driver exit\n");
++	uart_remove_one_port(&xenon_reg, &xenon_port);
++	uart_unregister_driver(&xenon_reg);
++	device_unregister(&xenon_device);
++}
++
++module_init(xenon_init);
++module_exit(xenon_exit);
++
++#ifdef CONFIG_SERIAL_XENON_CONSOLE
++
++static void xenon_console_putchar(struct uart_port *port, unsigned char ch)
++{
++	xenon_putch(port->membase, ch);
++}
++
++/*
++ * Print a string to the serial port trying not to disturb
++ * any possible real use of the port...
++ */
++static void xenon_console_write(struct console *cons,
++								const char *s, unsigned int count)
++{
++	uart_console_write(&xenon_port, s, count, xenon_console_putchar);
++}
++
++/*
++ * Setup serial console baud/bits/parity.  We do two things here:
++ * - construct a cflag setting for the first uart_open()
++ * - initialise the serial port
++ * Return non-zero if we didn't find a serial port.
++ */
++static int __init xenon_console_setup(struct console *cons, char *options)
++{
++	int baud = 115200;
++	int bits = 8;
++	int parity = 'n';
++	int flow = 'n';
++#if 0
++	ret = xenon_map_port(uport);
++	if (ret)
++		return ret;
++
++	xenon_reset(port);
++	xenon_pm(port, 0, -1);
++#endif
++
++	if (options)
++		uart_parse_options(options, &baud, &parity, &bits, &flow);
++	return uart_set_options(&xenon_port, cons, baud, parity, bits, flow);
++}
++
++static struct console xenon_console = {
++	.name   = "ttyS",
++	.write  = xenon_console_write,
++	.device       = uart_console_device,
++	.setup  = xenon_console_setup,
++	.flags  = CON_PRINTBUFFER | CON_ANYTIME,
++	.index  = -1,
++	.data   = &xenon_reg,
++};
++
++static int __init xenon_serial_console_init(void)
++{
++	xenon_port.membase = ioremap(xenon_port.mapbase, 0x10);
++
++	register_console(&xenon_console);
++	return 0;
++}
++
++console_initcall(xenon_serial_console_init);
++
++#endif /* CONFIG_SERIAL_XENON_CONSOLE */
++
++MODULE_AUTHOR("Herbert Poetzl <herbert@13thfloor.at>");
++MODULE_DESCRIPTION("Xenon XBOX 360 Serial port driver");
++MODULE_LICENSE("GPL v2");
++// MODULE_ALIAS("platform:xenon-uart");
+diff --git a/drivers/xenon/Makefile b/drivers/xenon/Makefile
+new file mode 100644
+index 000000000000..2535651cade9
+--- /dev/null
++++ b/drivers/xenon/Makefile
+@@ -0,0 +1,2 @@
++obj-$(CONFIG_PPC_XENON) += smc-core.o
++obj-$(CONFIG_PPC_XENON) += xenon_nand.o
+diff --git a/drivers/xenon/smc-core.c b/drivers/xenon/smc-core.c
+new file mode 100644
+index 000000000000..432b468f1c9a
+--- /dev/null
++++ b/drivers/xenon/smc-core.c
+@@ -0,0 +1,318 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ *  Xenon SMC core.
++ *
++ *  Copyright (C) 2010 Herbert Poetzl
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/pci.h>
++#include <linux/init.h>
++#include <linux/interrupt.h>
++#include <linux/mutex.h>
++
++#include <xenon/smc-core.h>
++
++#define DRV_NAME	"xenon_smc_core"
++#define DRV_VERSION	"0.1"
++
++struct xenon_smc
++{
++	void __iomem *base;
++	wait_queue_head_t wait_q;
++	spinlock_t fifo_lock;
++
++	void (*send)(void *msg);
++	void (*wait)(void *msg);
++	int (*reply)(void *msg);
++	int (*cached)(void *msg);
++
++	unsigned char cmd;
++};
++
++static struct xenon_smc smc;
++
++static unsigned char smc_reply[][16] = {
++	{ 0x01 },	/* power on type */
++	{ 0x04 },	/* rtc */
++	{ 0x07 },	/* temp */
++	{ 0x0a },	/* tray state */
++	{ 0x0f },	/* av pack */
++	{ 0x11 },	/* (h)ana */
++	{ 0x12 },	/* smc version */
++	{ 0x13 },	/* echo back */
++	{ 0x16 },	/* IR address */
++	{ 0x17 },	/* tilt state */
++	{ 0x1e },	/* 12b @83h */
++	{ 0x20 },	/* 12b @8fh */
++	{ 0x83 },	/* smc event */
++};
++
++int xenon_smc_ready(void) {
++	return smc.base != NULL;
++}
++
++static void _xenon_smc_send(void *msg)
++{
++	unsigned long flags;
++
++	// print_hex_dump(KERN_DEBUG, "_xenon_smc_send: ",
++	// 	DUMP_PREFIX_NONE, 16, 2, msg, 16, 0);
++
++	spin_lock_irqsave(&smc.fifo_lock, flags);
++	while (!(readl(smc.base + 0x84) & 4))
++		cpu_relax();
++
++	writel(4, smc.base + 0x84);
++	writesl(smc.base + 0x80, msg, 4);
++	writel(0, smc.base + 0x84);
++	spin_unlock_irqrestore(&smc.fifo_lock, flags);
++}
++
++static void _xenon_smc_wait(void *msg)
++{
++	/* do we expect a reply? */
++	if (*(unsigned char *)msg & 0x80)
++		return;
++
++#if 0
++	/* wait for reply, maybe a timeout? */
++	while (!(readl(smc.base + 0x94) & 4))
++		cpu_relax();
++#else
++	wait_event_interruptible(smc.wait_q,
++		smc.cmd == *(unsigned char *)msg);
++#endif
++}
++
++
++static int _xenon_smc_reply(void *msg)
++{
++	unsigned long flags;
++	int ret = 0;
++
++	spin_lock_irqsave(&smc.fifo_lock, flags);
++	if (readl(smc.base + 0x94) & 4) {
++		writel(4, smc.base + 0x94);
++		readsl(smc.base + 0x90, msg, 4);
++		writel(0, smc.base + 0x94);
++		ret = 1;
++	} else {
++		memset(msg, 0, 16);
++	}
++	spin_unlock_irqrestore(&smc.fifo_lock, flags);
++	return ret;
++}
++
++static unsigned char * _xenon_smc_cache_lookup(unsigned char *msg) {
++	unsigned char *ptr = smc_reply[0];
++
++	while (ptr[0]) {
++		if (msg[0] == ptr[0])
++			return ptr;
++		ptr += 16;
++	}
++	return NULL;
++}
++
++static int _xenon_smc_cached_reply(void *msg)
++{
++	unsigned char *ptr = _xenon_smc_cache_lookup(msg);
++
++	if (ptr)
++		memcpy(msg + 1, ptr + 1, 15);
++	return (ptr != NULL);
++}
++
++
++static void _xenon_smc_cache(unsigned char *msg) {
++	unsigned char *ptr = _xenon_smc_cache_lookup(msg);
++
++	if (ptr)
++		memcpy(ptr + 1, msg + 1, 15);
++	else
++		printk("unknown smc reply %02x", msg[0]);
++
++	//print_hex_dump(KERN_DEBUG, "_xenon_smc_cache: ",
++	//	DUMP_PREFIX_NONE, 16, 2, msg, 16, 0);
++	smc.cmd = msg[0];
++}
++
++
++int	xenon_smc_message(void *msg)
++{
++	int ret = 0;
++
++	if (smc.send)
++		smc.send(msg);
++
++	return ret;
++}
++
++EXPORT_SYMBOL_GPL(xenon_smc_message);
++
++int	xenon_smc_message_wait(void *msg)
++{
++	int ret = 0;
++
++	smc.cmd = 0;
++	if (smc.send)
++		smc.send(msg);
++	if (smc.wait)
++		smc.wait(msg);
++#if 0
++	if (smc.reply)
++		ret = smc.reply(msg);
++#else
++	if (smc.cached)
++		ret = smc.cached(msg);
++#endif
++	return ret;
++}
++
++EXPORT_SYMBOL_GPL(xenon_smc_message_wait);
++
++
++void xenon_smc_restart(void)
++{
++	unsigned char msg[16] = {0x82, 0x04, 0x30, 0};
++
++	xenon_smc_message(msg);
++}
++
++void xenon_smc_power_off(void)
++{
++	unsigned char msg[16] = {0x82, 0x01, 0x00, 0};
++
++	xenon_smc_message(msg);
++}
++
++void xenon_smc_halt(void)
++{
++	return;
++}
++
++static const struct pci_device_id xenon_smc_pci_tbl[] = {
++	{ PCI_VDEVICE(MICROSOFT, 0x580d), 0 },
++	{ }	/* terminate list */
++};
++
++static irqreturn_t xenon_smc_irq(int irq, void *dev_id)
++{
++	static unsigned char msg[16];
++	// struct pci_dev *pdev = dev_id;
++
++	// on power press:
++	// xenon_smc_irq() = 10000000,00000004
++	// _xenon_smc_cache: 8311 0100 0000 0000 0000 0000 0000 0000
++
++	unsigned int irqs = readl(smc.base + 0x50);
++
++	// printk(KERN_DEBUG "xenon_smc_irq() = %08x,%08x\n",
++	// 	irqs, readl(smc.base + 0x94));
++
++	if (irqs & 0x10000000) {
++		if (_xenon_smc_reply(msg)) {
++			_xenon_smc_cache(msg);
++			wake_up(&smc.wait_q);
++		}
++	}
++
++	writel(irqs, smc.base + 0x58);	// ack irq
++	return IRQ_NONE;
++}
++
++static int xenon_smc_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
++{
++	// static int printed_version;
++	int rc;
++	int pci_dev_busy = 0;
++	unsigned long mmio_start;
++
++	dev_printk(KERN_INFO, &pdev->dev, "version " DRV_VERSION "\n");
++
++	rc = pci_enable_device(pdev);
++	if (rc)
++		return rc;
++
++	rc = pci_request_regions(pdev, DRV_NAME);
++	if (rc) {
++		pci_dev_busy = 1;
++		goto err_out;
++	}
++
++	pci_intx(pdev, 1);
++
++	printk(KERN_INFO "attached to xenon SMC\n");
++
++	mmio_start = pci_resource_start(pdev, 0);
++	smc.base = ioremap(mmio_start, 0x100);
++	if (!smc.base)
++		goto err_out_regions;
++
++	init_waitqueue_head(&smc.wait_q);
++	spin_lock_init(&smc.fifo_lock);
++
++	if (request_irq(pdev->irq, xenon_smc_irq, IRQF_SHARED,
++		"xenon-smc", pdev)) {
++		printk(KERN_ERR "xenon-smc: request_irq failed\n");
++		goto err_out_ioremap;
++	}
++
++	smc.send = _xenon_smc_send;
++	smc.wait = _xenon_smc_wait;
++	smc.reply = _xenon_smc_reply;
++	smc.cached = _xenon_smc_cached_reply;
++
++	return 0;
++
++err_out_ioremap:
++	iounmap(smc.base);
++
++err_out_regions:
++	pci_release_regions(pdev);
++
++err_out:
++	if (!pci_dev_busy)
++		pci_disable_device(pdev);
++	return rc;
++}
++
++static void xenon_smc_remove(struct pci_dev *pdev)
++{
++	smc.send = NULL;
++	smc.reply = NULL;
++
++	iounmap(smc.base);
++
++	pci_release_regions(pdev);
++	pci_disable_device(pdev);
++}
++
++static struct pci_driver xenon_smc_pci_driver = {
++	.name			= DRV_NAME,
++	.id_table		= xenon_smc_pci_tbl,
++	.probe			= xenon_smc_init_one,
++	.remove			= xenon_smc_remove
++};
++
++
++static int __init xenon_smc_init(void)
++{
++	return pci_register_driver(&xenon_smc_pci_driver);
++}
++
++static void __exit xenon_smc_exit(void)
++{
++	pci_unregister_driver(&xenon_smc_pci_driver);
++}
++
++module_init(xenon_smc_init);
++module_exit(xenon_smc_exit);
++
++
++MODULE_DESCRIPTION("Driver for Xenon Southbridge SMC");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
++MODULE_DEVICE_TABLE(pci, xenon_smc_pci_tbl);
+diff --git a/drivers/xenon/xenon_nand.c b/drivers/xenon/xenon_nand.c
+new file mode 100644
+index 000000000000..152e830686f9
+--- /dev/null
++++ b/drivers/xenon/xenon_nand.c
+@@ -0,0 +1,69 @@
++/*
++ *  Xenon Nand.
++ *
++ *  Copyright (C) 2024 rwf93
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; version 2 of the License.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/pci.h>
++
++#define DRV_NAME "xenon_nand"
++#define DRV_VERSION "0.1"
++
++#if 1
++#define dprintk(f, x...) do { printk(KERN_DEBUG f "\n" , ##x); } while (0)
++#else
++#define dprintk(f, x...)
++#endif
++
++static int xenon_nand_init_probe(struct pci_dev *pdev, const struct pci_device_id *ent) {
++	dprintk("Xenon Nand PCI Probe");
++	return 0;
++}
++
++static void xenon_nand_remove(struct pci_dev *pdev) {
++
++}
++
++static const struct pci_device_id xenon_nand_pci_tbl[] = {
++	{ PCI_VDEVICE(MICROSOFT, 0x580b), 0 }, // Slim
++	{ }
++};
++
++static struct pci_driver xenon_nand_pci_driver = {
++	.name = DRV_NAME,
++	.id_table = xenon_nand_pci_tbl,
++	.probe = xenon_nand_init_probe,
++	.remove = xenon_nand_remove
++};
++
++static int __init xenon_nand_init(void) {
++	return pci_register_driver(&xenon_nand_pci_driver);
++}
++
++static void __exit xenon_nand_exit(void) {
++	pci_unregister_driver(&xenon_nand_pci_driver);
++}
++
++module_init(xenon_nand_init);
++module_exit(xenon_nand_exit);
++
++MODULE_DESCRIPTION("Driver for Xenon Nand");
++MODULE_LICENSE("GPL");
++MODULE_VERSION(DRV_VERSION);
++MODULE_DEVICE_TABLE(pci, xenon_nand_pci_tbl);
+diff --git a/include/uapi/linux/serial_core.h b/include/uapi/linux/serial_core.h
+index 9c007a106330..ec6fc617d5ca 100644
+--- a/include/uapi/linux/serial_core.h
++++ b/include/uapi/linux/serial_core.h
+@@ -165,6 +165,9 @@
+ /* Atheros AR933X SoC */
+ #define PORT_AR933X	99
+ 
++/* Xenon XBOX 360 Southbridge */
++#define PORT_XENON     91
++
+ /* MCHP 16550A UART with 256 byte FIFOs */
+ #define PORT_MCHP16550A	100
+ 
+diff --git a/include/xenon/smc-core.h b/include/xenon/smc-core.h
+new file mode 100644
+index 000000000000..32339ba1e9e8
+--- /dev/null
++++ b/include/xenon/smc-core.h
+@@ -0,0 +1,14 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#ifndef _XENON_SMC_CORE_H
++#define _XENON_SMC_CORE_H
++
++int xenon_smc_ready(void);
++int xenon_smc_message(void *msg);
++int xenon_smc_message_wait(void *msg);
++void xenon_smc_restart(void);
++void xenon_smc_power_off(void);
++void xenon_smc_halt(void);
++
++#endif
++
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index dc0e0c6ed075..8fe1683a139d 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -89,7 +89,7 @@ config MESSAGE_LOGLEVEL_DEFAULT
+ 
+ config BOOT_PRINTK_DELAY
+ 	bool "Delay each boot printk message by N milliseconds"
+-	depends on DEBUG_KERNEL && PRINTK && GENERIC_CALIBRATE_DELAY
++	depends on DEBUG_KERNEL && PRINTK
+ 	help
+ 	  This build option allows you to read kernel boot messages
+ 	  by inserting a short delay after each one.  The delay is
+diff --git a/sound/pci/Kconfig b/sound/pci/Kconfig
+index e0996a9d90b0..80ab23cb5508 100644
+--- a/sound/pci/Kconfig
++++ b/sound/pci/Kconfig
+@@ -932,4 +932,13 @@ config SND_YMFPCI
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called snd-ymfpci.
+ 
++config SND_XENON
++	tristate "Xenon XBOX 360 Sound"
++	select SND_PCM
++	help
++	  Say Y here to include support for the Xenon XBOX 360 soundcard.
++
++	  To compile this driver as a module, choose M here: the module
++	  will be called snd-xenon.
++
+ endif	# SND_PCI
+diff --git a/sound/pci/Makefile b/sound/pci/Makefile
+index 9d5e8e12ae73..78fba9b744b6 100644
+--- a/sound/pci/Makefile
++++ b/sound/pci/Makefile
+@@ -54,6 +54,7 @@ obj-$(CONFIG_SND_SIS7019) += snd-sis7019.o
+ obj-$(CONFIG_SND_SONICVIBES) += snd-sonicvibes.o
+ obj-$(CONFIG_SND_VIA82XX) += snd-via82xx.o
+ obj-$(CONFIG_SND_VIA82XX_MODEM) += snd-via82xx-modem.o
++obj-$(CONFIG_SND_XENON) += snd-xenon.o
+ 
+ obj-$(CONFIG_SND) += \
+ 	ac97/ \
+diff --git a/sound/pci/snd-xenon.c b/sound/pci/snd-xenon.c
+new file mode 100644
+index 000000000000..e446a9d2168f
+--- /dev/null
++++ b/sound/pci/snd-xenon.c
+@@ -0,0 +1,687 @@
++/*
++ *  xenon_snd.c - driver for XBOX 360 soundcard.
++ *  Copyright (C) 2009 by jc4360@gmail.com
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
++ *
++ */
++
++// #include <sound/driver.h>
++#include <linux/delay.h>
++#include <linux/init.h>
++#include <linux/moduleparam.h>
++#include <linux/pci.h>
++#include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
++#include <linux/slab.h>
++#include <linux/module.h>
++
++#include <asm/io.h>
++
++#include <sound/core.h>
++#include <sound/control.h>
++#include <sound/initval.h>
++#include <sound/pcm.h>
++#include <sound/pcm_params.h>
++#include <sound/pcm-indirect.h>
++#include <sound/asoundef.h>
++
++#define DESCRIPTOR_BUFFER_SIZE (32 * sizeof(u32) * 2)
++#define CACHELINE_SIZE 128
++
++#define IRQ_DISABLE             0
++#define IRQ_ENABLE              1
++
++static struct pci_device_id snd_xenon_ids[] = {
++	{ 0x1414, 0x580c, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
++	{ 0, }
++};
++
++MODULE_DEVICE_TABLE(pci, snd_xenon_ids);
++
++static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
++static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
++static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
++
++
++struct playback_device {
++	struct snd_pcm_substream *playback_substream;
++
++	int state;
++	void *dma_base_virt;
++	dma_addr_t descr_base_phys;
++	u32 *descr_base_virt;
++
++	int buffer_bytes;
++	int period_bytes;
++	int descr_bytes;
++	int gap;
++	int wptr;
++};
++
++struct snd_xenon {
++	unsigned long iobase_phys;
++	void *iobase_virt;
++
++	spinlock_t lock;
++	struct snd_card *card;
++	struct pci_dev *pci;
++
++	int irq;
++
++	dma_addr_t descr_base_phys;
++	void *descr_base_virt;
++
++	struct snd_pcm *pcm[2];
++	struct playback_device devices[2];
++
++	unsigned int dig_status;
++	unsigned int dig_pcm_status;
++
++	struct timer_list timer;
++	int timer_in_use;
++};
++
++static void cache_flush(void *addr, int size)
++{
++    void *p = addr;
++    while (size) {
++	__asm__ __volatile__ ("dcbst 0,%0" :: "r" (p));
++	p += 128;
++	size -= 128;
++    }
++    __asm__ __volatile__ ("sync" ::: "memory");
++}
++
++static inline u32 bswap32(u32 t)
++{
++	return ((t & 0xFF) << 24) | ((t & 0xFF00) << 8) | ((t & 0xFF0000) >> 8) | ((t & 0xFF000000) >> 24);
++}
++
++void xenon_smc_send_message(unsigned char *msg)
++{
++
++	void *base = ioremap(0x200ea001000, 0x1000);
++
++	while (!(readl(base + 0x84) & 4));
++	writel(4, base + 0x84);
++	writel(bswap32(*(u32 *)(msg + 0)), base + 0x80);
++	writel(bswap32(*(u32 *)(msg + 4)), base + 0x80);
++	writel(bswap32(*(u32 *)(msg + 8)), base + 0x80);
++	writel(bswap32(*(u32 *)(msg + 12)), base + 0x80);
++	writel(0, base + 0x84);
++	iounmap(base);
++}
++
++static inline void snd_xenon_set_irq_flag(struct snd_xenon *chip, int cmd)
++{
++	// enable/disable irq
++	return;
++}
++
++static irqreturn_t snd_xenon_interrupt(int irq, void *dev_id)
++{
++	printk("xenon_snd: give me an interrupt, please!\n");
++	return IRQ_HANDLED;
++}
++
++static void snd_xenon_timer_fn(struct timer_list * t)
++{
++	struct snd_xenon *chip = from_timer(chip, t, timer);
++
++	u32 reg;
++	int rptr_descr, wptr_descr, cur_len, size;
++
++	struct playback_device *device = NULL;
++	int dev_id = 0;
++
++	for (dev_id = 0; dev_id < 2; dev_id++) {
++
++		device = &chip->devices[dev_id];
++
++		spin_lock(&chip->lock);
++
++		if (device->state != 3) {
++			spin_unlock(&chip->lock);
++			continue;
++		}
++
++		reg = readl(chip->iobase_virt + 0x04 + dev_id * 0x10);
++		rptr_descr = reg & 0x1f;
++		wptr_descr = (reg & 0x1f00) >> 8;
++		cur_len = (reg >> 16) & 0xFFFF;
++
++		size = wptr_descr - rptr_descr;
++		if (size < 0) size += 32;
++		size *= device->descr_bytes;
++		size += cur_len;
++		if (wptr_descr < rptr_descr) size -= device->gap;
++		size = device->buffer_bytes - size;
++
++		if (size >= device->period_bytes) {
++			spin_unlock(&chip->lock);
++			snd_pcm_period_elapsed(device->playback_substream);
++		} else
++			spin_unlock(&chip->lock);
++	}
++
++	if (chip->timer_in_use) {
++		mod_timer(&chip->timer, jiffies + usecs_to_jiffies(200));
++	}
++
++}
++
++static struct snd_pcm_hardware snd_xenon_ana_playback_hw =
++{
++	.info =			(SNDRV_PCM_INFO_MMAP |
++				SNDRV_PCM_INFO_INTERLEAVED |
++				SNDRV_PCM_INFO_BLOCK_TRANSFER |
++				SNDRV_PCM_INFO_MMAP_VALID),
++	.formats =              SNDRV_PCM_FMTBIT_S16_LE,
++	.rates =                SNDRV_PCM_RATE_48000,
++	.rate_min =		48000,
++	.rate_max =		48000,
++	.channels_min =		2,
++	.channels_max =		2,
++	.buffer_bytes_max =	64 * 1024,
++	.period_bytes_min =	64,
++	.period_bytes_max =	64 * 1024,
++	.periods_min =		1,
++	.periods_max =		1024,
++	.fifo_size =            0,
++};
++
++static struct snd_pcm_hardware snd_xenon_spdif_playback_hw =
++{
++	.info =                 (SNDRV_PCM_INFO_MMAP |
++				SNDRV_PCM_INFO_INTERLEAVED |
++				SNDRV_PCM_INFO_BLOCK_TRANSFER |
++				SNDRV_PCM_INFO_MMAP_VALID),
++	.formats =              SNDRV_PCM_FMTBIT_S16_LE,
++	.rates =                SNDRV_PCM_RATE_48000,
++	.rate_min =             48000,
++	.rate_max =             48000,
++	.channels_min =         2,
++	.channels_max =         2,
++	.buffer_bytes_max =     64 * 1024,
++	.period_bytes_min =     64,
++	.period_bytes_max =     64 * 1024,
++	.periods_min =          1,
++	.periods_max =          1024,
++	.fifo_size =            0,
++};
++
++static int snd_xenon_playback_open(struct snd_pcm_substream *substream, int dev_id, struct snd_pcm_hardware *playback_hw)
++{
++	struct snd_xenon *chip = snd_pcm_substream_chip(substream);
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	struct playback_device *device = &chip->devices[dev_id];
++
++	runtime->hw = *playback_hw;
++
++	spin_lock_irq(&chip->lock);
++
++	memset(device, 0, sizeof(struct playback_device));
++	device->playback_substream = substream;
++
++	writel(0x2000000, chip->iobase_virt + 0x08 + dev_id * 0x10);
++	device->descr_base_phys =
++		chip->descr_base_phys +  dev_id * 0x100;
++	device->descr_base_virt =
++		(u32 *)(chip->descr_base_virt + dev_id * 0x100);
++	device->state = 1;
++
++	spin_unlock_irq(&chip->lock);
++
++	return 0;
++}
++
++static int snd_xenon_ana_playback_open(struct snd_pcm_substream *substream)
++{
++	return snd_xenon_playback_open(substream, 0, &snd_xenon_ana_playback_hw);
++}
++
++static int snd_xenon_spdif_playback_open(struct snd_pcm_substream *substream)
++{
++	return snd_xenon_playback_open(substream, 1, &snd_xenon_spdif_playback_hw);
++}
++static int snd_xenon_playback_close(struct snd_pcm_substream *substream)
++{
++	struct snd_xenon *chip = snd_pcm_substream_chip(substream);
++	struct playback_device *device = &chip->devices[0];
++
++	if (device->playback_substream != substream)
++		device = &chip->devices[1];
++
++	spin_lock_irq(&chip->lock);
++	device->state = 0;
++	spin_unlock_irq(&chip->lock);
++
++	if (device->dma_base_virt != NULL)
++	   iounmap(device->dma_base_virt);
++
++	device->playback_substream = NULL;
++	snd_pcm_lib_free_pages(substream);
++
++	return 0;
++}
++
++static int snd_xenon_pcm_hw_params(struct snd_pcm_substream *substream,
++				    struct snd_pcm_hw_params *hw_params)
++{
++	int bytes = params_buffer_bytes(hw_params);
++	return snd_pcm_lib_malloc_pages(substream, bytes);
++}
++
++static int snd_xenon_pcm_hw_free(struct snd_pcm_substream *substream)
++{
++	return snd_pcm_lib_free_pages(substream);
++}
++
++static int snd_xenon_playback_prepare(struct snd_pcm_substream *substream)
++{
++	struct snd_xenon *chip = snd_pcm_substream_chip(substream);
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	struct playback_device *device = &chip->devices[0];
++	int i , dev_id = 0;
++
++	if (device->playback_substream != substream) {
++		dev_id = 1;
++		device = &chip->devices[1];
++	}
++
++	spin_lock_irq(&chip->lock);
++
++	device->dma_base_virt =
++		ioremap(runtime->dma_addr, runtime->dma_bytes);
++
++	memset(device->dma_base_virt, 0, runtime->dma_bytes);
++	cache_flush(device->dma_base_virt, runtime->dma_bytes);
++
++	device->state = 2;
++	device->period_bytes = snd_pcm_lib_period_bytes(substream);
++	device->buffer_bytes = snd_pcm_lib_buffer_bytes(substream);
++	device->descr_bytes = (device->buffer_bytes + 31 ) / 32;
++	device->gap = (device->descr_bytes << 5) -
++			    device->buffer_bytes;
++	device->wptr = -1;
++
++
++	for (i=0; i < 32; i++) {
++		device->descr_base_virt[i*2] =
++			bswap32(runtime->dma_addr + device->descr_bytes * i);
++		device->descr_base_virt[i*2 + 1] =
++			bswap32(0x80000000 | (device->descr_bytes - 1));
++	}
++	device->descr_base_virt[31*2 + 1] =
++		bswap32(0x80000000 | (device->descr_bytes - 1 - device->gap));
++	cache_flush(device->descr_base_virt, DESCRIPTOR_BUFFER_SIZE);
++
++	writel(device->descr_base_phys, chip->iobase_virt + 0x00 + dev_id * 0x10);
++	writel(0x1c08001c, chip->iobase_virt + 0x08 + dev_id * 0x10);
++	writel((dev_id==0)?0x1c:0x02009902, chip->iobase_virt + 0x0c + dev_id * 0x10);
++
++	spin_unlock_irq(&chip->lock);
++	return 0;
++}
++
++static int snd_xenon_trigger(struct snd_pcm_substream *substream, int cmd)
++{
++	struct snd_xenon *chip = snd_pcm_substream_chip(substream);
++	struct playback_device *device = &chip->devices[0];
++	int dev_id = 0, ret = 0;
++	u32 reg;
++
++	if (device->playback_substream != substream) {
++		dev_id = 1;
++		device = &chip->devices[1];
++	}
++
++	spin_lock(&chip->lock);
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++		device->state = 3;
++
++		reg = readl(chip->iobase_virt + 0x08 + dev_id * 0x10);
++		writel(reg | 0x1000000, chip->iobase_virt + 0x08 + dev_id * 0x10);
++		break;
++
++	case SNDRV_PCM_TRIGGER_STOP:
++		device->state = 4;
++		reg = readl(chip->iobase_virt + 0x08 + dev_id * 0x10);
++		writel(reg & ~0x1000000, chip->iobase_virt + 0x08 + dev_id * 0x10);
++		break;
++
++	default:
++		ret = -EINVAL;
++	}
++	spin_unlock(&chip->lock);
++
++	return ret;
++}
++
++static snd_pcm_uframes_t snd_xenon_pointer(struct snd_pcm_substream *substream)
++{
++	struct snd_xenon *chip = snd_pcm_substream_chip(substream);
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	struct playback_device *device = &chip->devices[0];
++
++	int dev_id = 0;
++	int app_ptr, app_descr, bytes;
++	u32 reg;
++
++	if (device->playback_substream != substream) {
++		dev_id = 1;
++		device = &chip->devices[1];
++	}
++
++	spin_lock(&chip->lock);
++
++	app_ptr = frames_to_bytes(runtime, runtime->control->appl_ptr) %
++		      device->buffer_bytes;
++
++	if (app_ptr != device->wptr)
++		cache_flush(device->dma_base_virt, runtime->dma_bytes);
++
++	app_descr = app_ptr / device->descr_bytes;
++	reg = readl(chip->iobase_virt + 0x04 + dev_id * 0x10);
++	if (app_descr == (( reg & 0x1f00) >> 8))
++	    app_descr -= 1;
++	if (app_descr < 0) app_descr += 32;
++
++	device->wptr = app_ptr;
++
++	writel(app_descr << 8, chip->iobase_virt + 0x04 + dev_id * 0x10);
++
++	spin_unlock(&chip->lock);
++
++	bytes = (reg & 0x1f) * (device->descr_bytes);
++	return bytes_to_frames(substream->runtime, bytes);
++}
++
++static struct snd_pcm_ops snd_xenon_ana_playback_ops = {
++	.open =		snd_xenon_ana_playback_open,
++	.close =	snd_xenon_playback_close,
++	.ioctl =	snd_pcm_lib_ioctl,
++	.hw_params =	snd_xenon_pcm_hw_params,
++	.hw_free =	snd_xenon_pcm_hw_free,
++	.prepare =	snd_xenon_playback_prepare,
++	.trigger =	snd_xenon_trigger,
++	.pointer =	snd_xenon_pointer,
++};
++
++static struct snd_pcm_ops snd_xenon_spdif_playback_ops = {
++	.open =         snd_xenon_spdif_playback_open,
++	.close =        snd_xenon_playback_close,
++	.ioctl =        snd_pcm_lib_ioctl,
++	.hw_params =    snd_xenon_pcm_hw_params,
++	.hw_free =      snd_xenon_pcm_hw_free,
++	.prepare =      snd_xenon_playback_prepare,
++	.trigger =      snd_xenon_trigger,
++	.pointer =      snd_xenon_pointer,
++};
++
++static int snd_xenon_new_pcm(struct snd_xenon *chip)
++{
++	struct snd_pcm *pcm;
++	int err;
++
++	err = snd_pcm_new(chip->card, "Xenon Audio", 0, 1, 0, &pcm);
++	if (err < 0)
++		return err;
++	pcm->private_data = chip;
++	strcpy(pcm->name, "Analog");
++	chip->pcm[0] = pcm;
++
++	/* set operators */
++	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK,
++				&snd_xenon_ana_playback_ops);
++
++	/* pre-allocation of buffers */
++	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
++	&chip->pci->dev, 64*1024, 64*1024);
++
++	err = snd_pcm_new(chip->card, "Xenon Audio", 1, 1, 0, &pcm);
++	if (err < 0)
++		return err;
++	pcm->private_data = chip;
++	strcpy(pcm->name, "Digital");
++	chip->pcm[1] = pcm;
++	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK,
++				&snd_xenon_spdif_playback_ops);
++	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
++	&chip->pci->dev, 64*1024, 64*1024);
++
++	return 0;
++}
++
++static void snd_xenon_init(struct snd_xenon *chip)
++{
++	unsigned long flags;
++	static unsigned char smc_snd[32] = {0x8d, 1, 1};
++	xenon_smc_send_message(smc_snd);
++
++	spin_lock_irqsave(&chip->lock, flags);
++
++	chip->descr_base_virt = pci_alloc_consistent(chip->pci,
++			 DESCRIPTOR_BUFFER_SIZE * 2, &chip->descr_base_phys);
++	chip->descr_base_phys &= 0x1fffffff;
++	printk("snd_xenon: descr_base_virt=0x%llx, descr_base_phys=0x%llx\n",
++		(unsigned long long)chip->descr_base_virt,
++		(unsigned long long)chip->descr_base_phys);
++
++	writel(0, chip->iobase_virt + 0x08);
++	writel(0x2000000, chip->iobase_virt + 0x08);
++	writel(chip->descr_base_phys, chip->iobase_virt + 0x00);
++
++	writel(0, chip->iobase_virt + 0x18);
++	writel(0x2000000, chip->iobase_virt + 0x18);
++	writel(chip->descr_base_phys + DESCRIPTOR_BUFFER_SIZE,
++		chip->iobase_virt + 0x10);
++
++	/* Enable IRQ output */
++	snd_xenon_set_irq_flag(chip, IRQ_ENABLE);
++
++	spin_unlock_irqrestore(&chip->lock, flags);
++}
++
++static int snd_xenon_dev_free(struct snd_device *device);
++static int snd_xenon_free(struct snd_xenon *chip);
++
++static int snd_xenon_create(struct snd_card *card,
++				       struct pci_dev *pci,
++				       struct snd_xenon **rchip)
++{
++	struct snd_xenon *chip;
++	int err;
++
++	static struct snd_device_ops ops = {
++		.dev_free = snd_xenon_dev_free,
++	};
++	*rchip = NULL;
++
++	if ((err = pci_enable_device(pci)) < 0)
++		return err;
++
++	pci_set_master(pci);
++
++	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
++	if (chip == NULL) {
++		pci_disable_device(pci);
++		return -ENOMEM;
++	}
++
++	chip->card = card;
++	chip->pci = pci;
++	chip->irq = -1;
++	chip->dig_status = SNDRV_PCM_DEFAULT_CON_SPDIF;
++	chip->dig_pcm_status = SNDRV_PCM_DEFAULT_CON_SPDIF;
++	spin_lock_init(&chip->lock);
++
++	if (!( pci_resource_flags (pci, 0) & IORESOURCE_MEM)) {
++		dev_err(&pci->dev,
++			"region #0 not an MMIO resource, aborting\n");
++		return -ENODEV;
++	}
++
++	if ((err = pci_request_regions(pci, "Xenon AudioPCI")) < 0) {
++		kfree(chip);
++		pci_disable_device(pci);
++		return err;
++	}
++
++	chip->iobase_phys = pci_resource_start(pci, 0);
++	chip->iobase_virt = ioremap(chip->iobase_phys,
++				      pci_resource_len(pci, 0));
++
++	printk("snd_xenon: iobase_phys=0x%lx iobase_virt=0x%llx\n", chip->iobase_phys, (unsigned long long)chip->iobase_virt);
++
++	if (request_irq(pci->irq, snd_xenon_interrupt, IRQF_SHARED,
++			card->shortname, chip)) {
++		snd_printk(KERN_ERR "unable to grab IRQ %d\n", pci->irq);
++		snd_xenon_free(chip);
++		return -EBUSY;
++	}
++	chip->irq = pci->irq;
++	pci_intx(pci, IRQ_ENABLE);
++	printk("snd_xenon: irq=%x\n", chip->irq);
++
++	snd_xenon_init(chip);
++
++	if ((err = snd_xenon_new_pcm(chip)) < 0) {
++		snd_printk(KERN_WARNING "Could not to create PCM\n");
++		snd_xenon_free(chip);
++		return err;
++	}
++
++	if ((err = snd_device_new(card, SNDRV_DEV_LOWLEVEL,
++						chip, &ops)) < 0) {
++		snd_xenon_free(chip);
++		return err;
++	}
++
++	snd_card_set_dev(card, &pci->dev);
++
++	*rchip = chip;
++
++	timer_setup(&chip->timer, snd_xenon_timer_fn, 0);
++	chip->timer_in_use = 1;
++
++	// chip->timer.data = (unsigned long)chip;
++
++	printk("snd_xenon: driver initialized\n");
++
++	return 0;
++}
++
++static int snd_xenon_dev_free(struct snd_device *device)
++{
++	struct snd_xenon *chip = device->device_data;
++	return snd_xenon_free(chip);
++}
++
++static int snd_xenon_free(struct snd_xenon *chip)
++{
++	snd_xenon_set_irq_flag(chip, IRQ_DISABLE);
++
++	spin_lock_irq(&chip->lock);
++	chip->timer_in_use = 0;
++	spin_unlock_irq(&chip->lock);
++	del_timer_sync(&chip->timer);
++
++	if (chip->irq >= 0)
++		free_irq(chip->irq, chip);
++	if (chip->descr_base_virt)
++		pci_free_consistent(chip->pci, DESCRIPTOR_BUFFER_SIZE * 2, chip->descr_base_virt, chip->descr_base_phys);
++	if (chip->iobase_virt)
++		  iounmap(chip->iobase_virt);
++	pci_release_regions(chip->pci);
++	pci_disable_device(chip->pci);
++	kfree(chip);
++	return 0;
++}
++
++static int snd_xenon_probe(struct pci_dev *pci,
++			     const struct pci_device_id *pci_id)
++{
++	static int dev;
++	struct snd_card *card;
++	struct snd_xenon *chip;
++	int err;
++
++	if (dev >= SNDRV_CARDS)
++		return -ENODEV;
++	if (!enable[dev]) {
++		dev++;
++		return -ENOENT;
++	}
++
++	err = snd_card_new(&pci->dev, index[dev], id[dev], THIS_MODULE, 0, &card);
++	if (err < 0)
++		return -ENOMEM;
++
++	if ((err = snd_xenon_create(card, pci, &chip)) < 0) {
++		snd_card_free(card);
++		snd_xenon_free(chip);
++		return err;
++	}
++	card->private_data = chip;
++
++	strcpy(card->driver, "snd-xenon");
++	sprintf(card->shortname, "Xenon AudioPCI");
++	sprintf(card->longname, "%s at 0x%lx irq %i",
++				card->shortname, chip->iobase_phys, chip->irq);
++
++	if ((err = snd_card_register(card)) < 0) {
++		snd_card_free(card);
++		snd_xenon_free(chip);
++		return err;
++	}
++
++	pci_set_drvdata(pci, card);
++	dev++;
++
++	return 0;
++}
++
++static void snd_xenon_remove(struct pci_dev *pci)
++{
++	snd_card_free(pci_get_drvdata(pci));
++	pci_set_drvdata(pci, NULL);
++}
++
++static struct pci_driver driver = {
++	.name = "snd-xenon",
++	.id_table = snd_xenon_ids,
++	.probe = snd_xenon_probe,
++	.remove = snd_xenon_remove,
++};
++
++static int __init alsa_card_xenon_init(void)
++{
++	return pci_register_driver(&driver);
++}
++
++static void __exit alsa_card_xenon_exit(void)
++{
++	pci_unregister_driver(&driver);
++}
++
++module_init(alsa_card_xenon_init)
++module_exit(alsa_card_xenon_exit)
++
++MODULE_AUTHOR("jc4360@gmail.com");
++MODULE_DESCRIPTION("Xenon Audio Driver");
++MODULE_LICENSE("GPL");
