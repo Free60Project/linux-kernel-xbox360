@@ -30,7 +30,7 @@ index 5a867f23fe7f..27bedf3de520 100644
  zlib.h
  zutil.h
 diff --git a/arch/powerpc/boot/Makefile b/arch/powerpc/boot/Makefile
-index a7ab087d412c..9189ac2e3f7f 100644
+index c47b78c1d3e7..6b4cd7ce5c2d 100644
 --- a/arch/powerpc/boot/Makefile
 +++ b/arch/powerpc/boot/Makefile
 @@ -277,6 +277,7 @@ quiet_cmd_wrap	= WRAP    $@
@@ -608,10 +608,10 @@ index fea3766eac0f..c46e134cb188 100644
  config KVM_GUEST
  	bool "KVM Guest support"
 diff --git a/arch/powerpc/platforms/Kconfig.cputype b/arch/powerpc/platforms/Kconfig.cputype
-index 613b383ed8b3..c1d4220a8678 100644
+index 7b527d18aa5e..a75fe6bd417b 100644
 --- a/arch/powerpc/platforms/Kconfig.cputype
 +++ b/arch/powerpc/platforms/Kconfig.cputype
-@@ -580,8 +580,8 @@ config NR_CPUS
+@@ -575,8 +575,8 @@ config NR_CPUS
  
  config NOT_COHERENT_CACHE
  	bool
@@ -1825,7 +1825,7 @@ index 20e6645ab737..6685239fdbd3 100644
  obj-$(CONFIG_AHCI_DA850)	+= ahci_da850.o libahci.o libahci_platform.o
 diff --git a/drivers/ata/sata_xenon.c b/drivers/ata/sata_xenon.c
 new file mode 100644
-index 000000000000..ca83b155591c
+index 000000000000..7c9c247bb645
 --- /dev/null
 +++ b/drivers/ata/sata_xenon.c
 @@ -0,0 +1,251 @@
@@ -2002,7 +2002,7 @@ index 000000000000..ca83b155591c
 +
 +static void xenon_bmdma_error_handler(struct ata_port *ap)
 +{
-+	ata_do_eh(ap, ata_std_prereset, xenon_softreset, sata_std_hardreset, ata_std_postreset);
++	ata_std_error_handler(ap);
 +}
 +
 +
@@ -2081,7 +2081,7 @@ index 000000000000..ca83b155591c
 +MODULE_DEVICE_TABLE(pci, xenon_pci_tbl);
 +MODULE_VERSION(DRV_VERSION);
 diff --git a/drivers/char/Kconfig b/drivers/char/Kconfig
-index ae6196760556..7d64c1dfc2c8 100644
+index d2cfc584e202..f4d0a2172f70 100644
 --- a/drivers/char/Kconfig
 +++ b/drivers/char/Kconfig
 @@ -7,6 +7,32 @@ menu "Character devices"
@@ -4034,10 +4034,10 @@ index 000000000000..7fae55b3a8f2
 +MODULE_DEVICE_TABLE(pci, xenos_pci_tbl);
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
-index 079620dd4286..8ee3a3a43070 100644
+index 9d28fcf7cd2a..f147dcda7ba7 100644
 --- a/drivers/hwmon/Kconfig
 +++ b/drivers/hwmon/Kconfig
-@@ -2619,6 +2619,13 @@ config SENSORS_INTEL_M10_BMC_HWMON
+@@ -2629,6 +2629,13 @@ config SENSORS_INTEL_M10_BMC_HWMON
  	  sensors monitor various telemetry data of different components on the
  	  card, e.g. board temperature, FPGA core temperature/voltage/current.
  
@@ -4052,10 +4052,10 @@ index 079620dd4286..8ee3a3a43070 100644
  
  comment "ACPI drivers"
 diff --git a/drivers/hwmon/Makefile b/drivers/hwmon/Makefile
-index 48e5866c0c9a..643c52addb50 100644
+index cd8bc4752b4d..4d05c7096add 100644
 --- a/drivers/hwmon/Makefile
 +++ b/drivers/hwmon/Makefile
-@@ -239,6 +239,7 @@ obj-$(CONFIG_SENSORS_W83L785TS)	+= w83l785ts.o
+@@ -240,6 +240,7 @@ obj-$(CONFIG_SENSORS_W83L785TS)	+= w83l785ts.o
  obj-$(CONFIG_SENSORS_W83L786NG)	+= w83l786ng.o
  obj-$(CONFIG_SENSORS_WM831X)	+= wm831x-hwmon.o
  obj-$(CONFIG_SENSORS_WM8350)	+= wm8350-hwmon.o
@@ -4552,10 +4552,10 @@ index 15e46e6ac262..8caf2f646351 100644
  	return rc;
  }
 diff --git a/drivers/rtc/Kconfig b/drivers/rtc/Kconfig
-index 9aec922613ce..fa88d1fa2ce1 100644
+index 64f6e9756aff..86b7c4b8b444 100644
 --- a/drivers/rtc/Kconfig
 +++ b/drivers/rtc/Kconfig
-@@ -1703,6 +1703,16 @@ config RTC_DRV_PS3
+@@ -1706,6 +1706,16 @@ config RTC_DRV_PS3
  	  This driver can also be built as a module. If so, the module
  	  will be called rtc-ps3.
  
@@ -4573,7 +4573,7 @@ index 9aec922613ce..fa88d1fa2ce1 100644
  	tristate "Freescale STMP3xxx/i.MX23/i.MX28 RTC"
  	depends on ARCH_MXS || COMPILE_TEST
 diff --git a/drivers/rtc/Makefile b/drivers/rtc/Makefile
-index 4619aa2ac469..da849b7206df 100644
+index 789bddfea99d..58e41a28d1b3 100644
 --- a/drivers/rtc/Makefile
 +++ b/drivers/rtc/Makefile
 @@ -193,5 +193,6 @@ obj-$(CONFIG_RTC_DRV_WILCO_EC)	+= rtc-wilco-ec.o
@@ -4701,7 +4701,7 @@ index 000000000000..ddeff030d539
 +MODULE_VERSION(DRV_VERSION);
 +MODULE_ALIAS("platform:rtc-xenon");
 diff --git a/drivers/scsi/scsi_scan.c b/drivers/scsi/scsi_scan.c
-index 396fcf194b6b..1bc44e7cd830 100644
+index 3c6e089e80c3..cc90cca589e3 100644
 --- a/drivers/scsi/scsi_scan.c
 +++ b/drivers/scsi/scsi_scan.c
 @@ -703,6 +703,7 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
@@ -4713,10 +4713,10 @@ index 396fcf194b6b..1bc44e7cd830 100644
  		memset(inq_result, 0, try_inquiry_len);
  
 diff --git a/drivers/tty/serial/Kconfig b/drivers/tty/serial/Kconfig
-index d80353287a05..ee0b0571dd5e 100644
+index 2829950d5bcb..0428d7c15051 100644
 --- a/drivers/tty/serial/Kconfig
 +++ b/drivers/tty/serial/Kconfig
-@@ -1497,6 +1497,39 @@ config SERIAL_MILBEAUT_USIO_CONSOLE
+@@ -1504,6 +1504,39 @@ config SERIAL_MILBEAUT_USIO_CONSOLE
  	  receives all kernel messages and warnings and which allows logins in
  	  single user mode).
  
@@ -4757,7 +4757,7 @@ index d80353287a05..ee0b0571dd5e 100644
  	tristate "LiteUART serial port support"
  	depends on HAS_IOMEM
 diff --git a/drivers/tty/serial/Makefile b/drivers/tty/serial/Makefile
-index d58d9f719889..fa669d0bebf8 100644
+index a2ccbc508ec5..ea5b643461f4 100644
 --- a/drivers/tty/serial/Makefile
 +++ b/drivers/tty/serial/Makefile
 @@ -64,6 +64,7 @@ obj-$(CONFIG_SERIAL_MXS_AUART)		+= mxs-auart.o
@@ -5709,7 +5709,7 @@ index 000000000000..32339ba1e9e8
 +#endif
 +
 diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
-index ebe33181b6e6..f6e38def3243 100644
+index dc0e0c6ed075..8fe1683a139d 100644
 --- a/lib/Kconfig.debug
 +++ b/lib/Kconfig.debug
 @@ -89,7 +89,7 @@ config MESSAGE_LOGLEVEL_DEFAULT
@@ -5722,10 +5722,10 @@ index ebe33181b6e6..f6e38def3243 100644
  	  This build option allows you to read kernel boot messages
  	  by inserting a short delay after each one.  The delay is
 diff --git a/sound/pci/Kconfig b/sound/pci/Kconfig
-index 787868c9e91b..ce3860c20425 100644
+index e0996a9d90b0..80ab23cb5508 100644
 --- a/sound/pci/Kconfig
 +++ b/sound/pci/Kconfig
-@@ -932,6 +932,15 @@ config SND_YMFPCI
+@@ -932,4 +932,13 @@ config SND_YMFPCI
  	  To compile this driver as a module, choose M here: the module
  	  will be called snd-ymfpci.
  
@@ -5739,10 +5739,8 @@ index 787868c9e91b..ce3860c20425 100644
 +	  will be called snd-xenon.
 +
  endif	# SND_PCI
- 
- source "sound/pci/hda/Kconfig"
 diff --git a/sound/pci/Makefile b/sound/pci/Makefile
-index 18b673018dfd..985a29ac13c6 100644
+index 9d5e8e12ae73..78fba9b744b6 100644
 --- a/sound/pci/Makefile
 +++ b/sound/pci/Makefile
 @@ -54,6 +54,7 @@ obj-$(CONFIG_SND_SIS7019) += snd-sis7019.o
