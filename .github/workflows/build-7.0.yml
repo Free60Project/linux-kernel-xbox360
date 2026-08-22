@@ -1,0 +1,155 @@
+name: Build Xenon kernel (7.0.x)
+
+# Build gate for the Xbox 360 (Xenon) Linux 7.0 port.
+#
+# Stage 1  patch applies cleanly to a pristine linux-7.0.x tree
+# Stage 2  each defconfig resolves and the kernel compiles
+# Stage 3  the zImage.xenon boot target actually links
+#
+# TOOLCHAIN NOTE
+#   This uses Debian's stock powerpc64-linux-gnu- cross compiler, which is
+#   reliable and apt-installable. It is NOT the Free60 patched GCC.
+#   Xenon's AltiVec unit is incomplete (VMX128 substitutes for some
+#   instructions) and the defconfig sets CONFIG_ALTIVEC=y, so a kernel built
+#   here verifies that the source COMPILES AND LINKS -- it is not certified
+#   for execution on real hardware. Build hardware images with the patched
+#   Free60 toolchain (Free60Project/buildroot, gcc ~12.4.0 + VMX128 patches).
+
+on:
+  push:
+    paths-ignore: ['**/*.md']
+  pull_request:
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+env:
+  KVER: 7.0.14
+  PATCHFILE: patch-7.0-xenon.diff
+
+jobs:
+  patch-check:
+    name: Stage 1 - patch applies cleanly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache kernel tarball
+        uses: actions/cache@v4
+        with:
+          path: ~/kernel-tarballs
+          key: linux-${{ env.KVER }}-tarball
+
+      - name: Fetch linux-${{ env.KVER }}
+        run: |
+          mkdir -p ~/kernel-tarballs
+          T=~/kernel-tarballs/linux-$KVER.tar.xz
+          if [ ! -f "$T" ]; then
+            curl -fsSL -o "$T" \
+              "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$KVER.tar.xz"
+          fi
+          tar xf "$T"
+
+      - name: Verify patch applies with zero rejects and zero fuzz
+        run: |
+          cd linux-$KVER
+          # --dry-run first so a failure reports every bad hunk, not just the first
+          if ! patch -p1 --dry-run --forward --fuzz=0 --no-backup-if-mismatch \
+                 < "$GITHUB_WORKSPACE/$PATCHFILE" > /tmp/dryrun.txt 2>&1; then
+            echo "::error::patch does not apply cleanly to linux-$KVER"
+            cat /tmp/dryrun.txt
+            exit 1
+          fi
+          if grep -qE 'FAILED|fuzz|offset' /tmp/dryrun.txt; then
+            echo "::error::patch applied only with fuzz/offset - refresh it"
+            grep -E 'FAILED|fuzz|offset' /tmp/dryrun.txt
+            exit 1
+          fi
+          echo "Clean apply: $(grep -c '^patching file' /tmp/dryrun.txt) files."
+
+  build:
+    name: Stage 2/3 - ${{ matrix.defconfig }}
+    runs-on: ubuntu-latest
+    needs: patch-check
+    strategy:
+      fail-fast: false
+      matrix:
+        defconfig:
+          - xenon-7.0.defconfig
+          - xenon-7.0-debug.defconfig
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-powerpc64-linux-gnu binutils-powerpc64-linux-gnu \
+            bc bison flex libssl-dev libelf-dev cpio kmod rsync
+
+      - name: Cache kernel tarball
+        uses: actions/cache@v4
+        with:
+          path: ~/kernel-tarballs
+          key: linux-${{ env.KVER }}-tarball
+
+      - name: Fetch and patch
+        run: |
+          mkdir -p ~/kernel-tarballs
+          T=~/kernel-tarballs/linux-$KVER.tar.xz
+          if [ ! -f "$T" ]; then
+            curl -fsSL -o "$T" \
+              "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$KVER.tar.xz"
+          fi
+          tar xf "$T"
+          cd linux-$KVER
+          patch -p1 --forward --fuzz=0 --no-backup-if-mismatch \
+            < "$GITHUB_WORKSPACE/$PATCHFILE"
+          # patch backups would pollute any regenerated diff
+          test -z "$(find . -name '*.orig')" || { echo "::error::stray .orig files"; exit 1; }
+
+      - name: Install defconfig
+        run: |
+          cp "${{ matrix.defconfig }}" \
+             "linux-$KVER/arch/powerpc/configs/xenon_defconfig"
+
+      - name: Configure
+        working-directory: linux-7.0.14
+        run: |
+          make ARCH=powerpc CROSS_COMPILE=powerpc64-linux-gnu- xenon_defconfig
+
+      - name: Assert preemption model resolved as intended
+        working-directory: linux-7.0.14
+        run: |
+          # PREEMPT_VOLUNTARY is unselectable on powerpc at 7.0 (it depends on
+          # !ARCH_HAS_PREEMPT_LAZY and powerpc selects that). If it ever shows
+          # up here, someone reintroduced it and Kconfig silently dropped it.
+          if grep -q '^CONFIG_PREEMPT_VOLUNTARY=y' .config; then
+            echo "::error::CONFIG_PREEMPT_VOLUNTARY survived - unexpected on 7.0 powerpc"
+            exit 1
+          fi
+          grep -E '^CONFIG_(PREEMPT_LAZY|PREEMPTION|PREEMPT_COUNT)=' .config \
+            || { echo "::error::no preemption model resolved"; exit 1; }
+
+      - name: Build kernel
+        working-directory: linux-7.0.14
+        run: |
+          make -j"$(nproc)" ARCH=powerpc CROSS_COMPILE=powerpc64-linux-gnu- vmlinux
+
+      - name: Build zImage.xenon boot target
+        working-directory: linux-7.0.14
+        run: |
+          make -j"$(nproc)" ARCH=powerpc CROSS_COMPILE=powerpc64-linux-gnu- zImage.xenon
+          test -f arch/powerpc/boot/zImage.xenon \
+            || { echo "::error::zImage.xenon was not produced"; exit 1; }
+          ls -la arch/powerpc/boot/zImage.xenon
+          file arch/powerpc/boot/zImage.xenon
+          # XeLL needs a flat 32-bit big-endian PPC ELF. The generic wrapper
+          # rule would produce something else entirely -- assert we got ours.
+          file arch/powerpc/boot/zImage.xenon | grep -q "ELF 32-bit MSB" \
+            || { echo "::error::zImage.xenon is not a 32-bit MSB ELF"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zImage.xenon-${{ matrix.defconfig }}
+          path: linux-7.0.14/arch/powerpc/boot/zImage.xenon
+          if-no-files-found: error
